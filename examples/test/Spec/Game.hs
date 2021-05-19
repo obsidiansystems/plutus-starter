@@ -62,6 +62,7 @@ tests = testGroup "game"
           void $ Trace.waitNSlots 1
 
           hdlGuess <- Trace.activateContractWallet w2 (guess @ContractError)
+          void $ Trace.waitNSlots 1
           Trace.callEndpoint @"guess" hdlGuess (GuessParams "secret")
           void $ Trace.waitNSlots 1
 
