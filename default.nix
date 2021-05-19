@@ -30,11 +30,24 @@ in
       "https://github.com/input-output-hk/goblins"."cde90a2b27f79187ca8310b6549331e59595e7ba" = "17c88rbva3iw82yg9srlxjv2ia5wjb9cyqw44hik565f5v9svnyg";
     };
 
-    # modules = [
-    #   {
-    #     packages = {
-    #     };
-    #   }
-    # ];
+    modules = [
+      {
+        reinstallableLibGhc = false;
+        packages = {
+          # External package settings
+
+          inline-r.ghcOptions = [ "-XStandaloneKindSignatures" ];
+
+          # Haddock doesn't work for some reason
+          eventful-sql-common.doHaddock = false;
+          # Needs some extra options to work with newer persistent
+          eventful-sql-common.ghcOptions = [ "-XDerivingStrategies -XStandaloneDeriving -XUndecidableInstances -XDataKinds -XFlexibleInstances -XMultiParamTypeClasses" ];
+
+          # Honestly not sure why we need this, it has a mysterious unused dependency on "m"
+          # This will go away when we upgrade nixpkgs and things use ieee754 anyway.
+          ieee.components.library.libs = pkgs.lib.mkForce [ ];
+        };
+      }
+    ];
   };
 }
