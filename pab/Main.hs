@@ -14,6 +14,7 @@ module Main(main) where
 import           Control.Monad                       (void)
 import           Control.Monad.Freer                 (Eff, Member, interpret, type (~>))
 import           Control.Monad.Freer.Error           (Error)
+import           Control.Monad.Freer.Extras.Log      (LogMsg)
 import           Control.Monad.IO.Class              (MonadIO (..))
 import           Data.Aeson                          (FromJSON (..), ToJSON (..), genericToJSON, genericParseJSON
                                                      , defaultOptions, Options(..))
@@ -23,6 +24,7 @@ import           Plutus.Contract                     (BlockchainActions, Contrac
 import           Plutus.PAB.Effects.Contract         (ContractEffect (..))
 import           Plutus.PAB.Effects.Contract.Builtin (Builtin, SomeBuiltin (..), type (.\\))
 import qualified Plutus.PAB.Effects.Contract.Builtin as Builtin
+import           Plutus.PAB.Monitoring.PABLogMsg
 import           Plutus.PAB.Simulator                (SimulatorEffectHandlers)
 import qualified Plutus.PAB.Simulator                as Simulator
 import           Plutus.PAB.Types                    (PABError (..))
@@ -74,6 +76,7 @@ instance Pretty StarterContracts where
 
 handleStarterContract ::
     ( Member (Error PABError) effs
+    , Member (LogMsg (PABMultiAgentMsg (Builtin StarterContracts))) effs
     )
     => ContractEffect (Builtin StarterContracts)
     ~> Eff effs
