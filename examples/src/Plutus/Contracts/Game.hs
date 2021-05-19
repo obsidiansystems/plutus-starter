@@ -44,7 +44,7 @@ module Plutus.Contracts.Game
 import           Control.Monad          (void)
 import           Data.Aeson             (FromJSON, ToJSON)
 import           GHC.Generics           (Generic)
-import           Ledger                 (Address, Validator, ValidatorCtx, Value)
+import           Ledger                 (Address, Validator, ScriptContext, Value)
 import qualified Ledger.Constraints     as Constraints
 import qualified Ledger.Typed.Scripts   as Scripts
 import           Plutus.Contract
@@ -75,8 +75,8 @@ type GameSchema =
         .\/ Endpoint "lock" LockParams
         .\/ Endpoint "guess" GuessParams
 
--- | The validation function (DataValue -> RedeemerValue -> ValidatorCtx -> Bool)
-validateGuess :: HashedString -> ClearString -> ValidatorCtx -> Bool
+-- | The validation function (DataValue -> RedeemerValue -> ScriptContext -> Bool)
+validateGuess :: HashedString -> ClearString -> ScriptContext -> Bool
 validateGuess (HashedString actual) (ClearString guess') _ = actual == sha2_256 guess'
 
 -- | The validator script of the game.

@@ -1,16 +1,4 @@
 {
-    "haskellNix": {
-        "branch": "master",
-        "description": "Alternative Haskell Infrastructure for Nixpkgs",
-        "homepage": "https://input-output-hk.github.io/haskell.nix",
-        "owner": "input-output-hk",
-        "repo": "haskell.nix",
-        "rev": "87084d65a476cc826a0e8c5d281d494254f5bc7a",
-        "sha256": "168vj5zswhxvvgp39ksr400gl2szih9sjbcdz2wsb7r7rnwp42xp",
-        "type": "tarball",
-        "url": "https://github.com/input-output-hk/haskell.nix/archive/87084d65a476cc826a0e8c5d281d494254f5bc7a.tar.gz",
-        "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
-    },
     "niv": {
         "branch": "master",
         "description": "Easy dependency management for Nix projects",
@@ -23,17 +11,16 @@
         "url": "https://github.com/nmattia/niv/archive/94080ae8286024820c570a2a24ed7c36d7ad04a9.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     },
-    "nixpkgs": {
-        "branch": "nixpkgs-unstable",
-        "builtin": true,
-        "description": "A read-only mirror of NixOS/nixpkgs tracking the released channels. Send issues and PRs to",
-        "homepage": "https://github.com/NixOS/nixpkgs",
-        "owner": "NixOS",
-        "repo": "nixpkgs",
-        "rev": "7d71001b796340b219d1bfa8552c81995017544a",
-        "sha256": "09fv5rhnq6m770wy0wyyp8anhqsn2dyrk4c4gmka02r5600kbaiw",
+    "plutus": {
+        "branch": "master",
+        "description": "The Plutus language implementation and tools",
+        "homepage": "",
+        "owner": "input-output-hk",
+        "repo": "plutus",
+        "rev": "8965e1dac824a61476c5e400459555d448766c7f",
+        "sha256": "02lg01js0srjm2a5lswjshpx312dbm5b8adig05xjbhi555wg42c",
         "type": "tarball",
-        "url": "https://github.com/NixOS/nixpkgs/archive/7d71001b796340b219d1bfa8552c81995017544a.tar.gz",
+        "url": "https://github.com/input-output-hk/plutus/archive/8965e1dac824a61476c5e400459555d448766c7f.tar.gz",
         "url_template": "https://github.com/<owner>/<repo>/archive/<rev>.tar.gz"
     }
 }

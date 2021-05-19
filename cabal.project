@@ -35,7 +35,7 @@ source-repository-package
 
 -- This is also needed so evenful-sql-common will build with a newer version of persistent.
 package eventful-sql-common
-  ghc-options: -XDerivingStrategies -XStandaloneDeriving -XUndecidableInstances -XDataKinds -XFlexibleInstances -XMultiParamTypeClasses
+  ghc-options: -XDerivingStrategies -XStandaloneDeriving -XUndecidableInstances -XDataKinds -XFlexibleInstances
 
 allow-newer:
            -- Has a commit to allow newer aeson, not on Hackage yet
