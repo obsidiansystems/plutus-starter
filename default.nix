@@ -1,11 +1,27 @@
+{ system ? builtins.currentSystem
+, crossSystem ? null
+, config ? { }
+, sourcesOverride ? { }
+, checkMaterialization ? false
+, enableHaskellProfiling ? false
+}:
 let
 
-  plutus = import (import ./nix/sources.nix {}).plutus {};
-  inherit (plutus) pkgs;
+  sources = import ./nix/sources.nix {};
+  # TODO: remove once plutus bumps it's iohk-nix dependency to include utils overlay
+  # needed for cabal-wrapper
+  iohkNix = import sources.iohk-nix {};
+  packages = import (sources.plutus + "/nix") {
+    inherit system crossSystem config sourcesOverride checkMaterialization enableHaskellProfiling;
+    overlays =
+      iohkNix.overlays.utils # remove it plutus begins including this overlay
+      ++ [(final: _: { cabal = final.cabal-install; })]; # this adds an alias for cabal-install since iohkNix util's overlay acts on pkgs.cabal
+  };
+  inherit (packages) plutus pkgs;
 
 in
 {
-  inherit plutus;
+  inherit plutus pkgs;
 
   haskellNixProject = pkgs.haskell-nix.cabalProject' {
     # 'cleanGit' cleans a source directory based on the files known by git
