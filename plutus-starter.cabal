@@ -23,19 +23,30 @@ maintainer:         Your email
 
 library
     exposed-modules:
-      MyModule
+      Plutus.Contracts.Uniswap
+      Plutus.Contracts.Uniswap.OnChain
+      Plutus.Contracts.Uniswap.OffChain
+      Plutus.Contracts.Uniswap.Pool
+      Plutus.Contracts.Uniswap.Types
       Plutus.Contracts.Game
     build-depends:
       base >= 4.9 && < 5,
       aeson,
       bytestring,
+      containers,
       playground-common,
       plutus-contract,
       plutus-tx-plugin,
       plutus-tx,
-      plutus-ledger
+      plutus-ledger,
+      plutus-use-cases,
+      text
     hs-source-dirs: src examples/src
     default-language: Haskell2010
+    default-extensions: ExplicitForAll ScopedTypeVariables
+                        DeriveGeneric StandaloneDeriving DeriveLift
+                        GeneralizedNewtypeDeriving DeriveFunctor DeriveFoldable
+                        DeriveTraversable MultiParamTypeClasses
     ghc-options:
             -- See Plutus Tx readme
             -fobject-code -fno-ignore-interface-pragmas -fno-omit-interface-pragmas
