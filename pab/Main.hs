@@ -41,6 +41,7 @@ import           Plutus.PAB.Types                        (PABError (..))
 import qualified Plutus.PAB.Webserver.Server             as PAB.Server
 import           Prelude                                 hiding (init)
 import           Wallet.Emulator.Types                   (Wallet (..))
+import           Wallet.Types (NotificationError (..))
 
 
 main :: IO ()
@@ -48,7 +49,9 @@ main = void $ Simulator.runSimulationWith handlers $ do
     logString @(Builtin UniswapContracts) "Starting Uniswap PAB webserver on port 8080. Press enter to exit."
     shutdown <- PAB.Server.startServerDebug
 
-    cidInit  <- Simulator.activateContract (Wallet 1) Init
+    -- TODO: How many wallets do we want to make?
+    -- IHS Notes: creates 1 million token for the smart contract exchange
+    cidInit  :: ContractInstanceId <- Simulator.activateContract (Wallet 1) Init
     cs       <- flip Simulator.waitForState cidInit $ \json -> case fromJSON json of
                     Success (Just (Semigroup.Last cur)) -> Just $ Currency.currencySymbol cur
                     _                                   -> Nothing
@@ -56,16 +59,18 @@ main = void $ Simulator.runSimulationWith handlers $ do
 
     logString @(Builtin UniswapContracts) $ "Initialization finished. Minted: " ++ show cs
 
+    -- TODO: Change tokenNames to be minted (AlphaCoin, BetaCoin, etc...)
     let coins = Map.fromList [(tn, Uniswap.mkCoin cs tn) | tn <- tokenNames]
         ada   = Uniswap.mkCoin adaSymbol adaToken
 
-    cidStart <- Simulator.activateContract (Wallet 1) UniswapStart
-    us       <- flip Simulator.waitForState cidStart $ \json -> case (fromJSON json :: Result (Monoid.Last (Either Text Uniswap.Uniswap))) of
+    -- IHS Notes: Creates a Smart Contract that will contain swappable tokens
+    cidStart :: ContractInstanceId <- Simulator.activateContract (Wallet 1) UniswapStart
+    us :: Uniswap.Uniswap <- flip Simulator.waitForState cidStart $ \json -> case (fromJSON json :: Result (Monoid.Last (Either Text Uniswap.Uniswap))) of
                     Success (Monoid.Last (Just (Right us))) -> Just us
                     _                                       -> Nothing
     logString @(Builtin UniswapContracts) $ "Uniswap instance created: " ++ show us
 
-    cids <- fmap Map.fromList $ forM wallets $ \w -> do
+    cids :: Map.Map Wallet ContractInstanceId <- fmap Map.fromList $ forM wallets $ \w -> do
         cid <- Simulator.activateContract w $ UniswapUser us
         logString @(Builtin UniswapContracts) $ "Uniswap user contract started for " ++ show w
         _ <- Simulator.callEndpointOnInstance cid "funds" ()
@@ -75,14 +80,19 @@ main = void $ Simulator.runSimulationWith handlers $ do
         logString @(Builtin UniswapContracts) $ "initial funds in wallet " ++ show w ++ ": " ++ show v
         return (w, cid)
 
+    -- IHS Notes: Creates a new liquidity pool for ADA and "A" Coin | 100k for ADA and 500k for "A" Coin
     let cp = Uniswap.CreateParams ada (coins Map.! "A") 100000 500000
     logString @(Builtin UniswapContracts) $ "creating liquidity pool: " ++ show (encode cp)
-    _  <- Simulator.callEndpointOnInstance (cids Map.! Wallet 2) "create" cp
+    -- IHS Notes: How to send request to smart contract instances with API call and values, only return Maybe Error
+    _ :: Maybe Wallet.Types.NotificationError <- Simulator.callEndpointOnInstance (cids Map.! Wallet 2) "create" cp
+    -- IHS: use waitForState to wait for the smart contract response
     flip Simulator.waitForState (cids Map.! Wallet 2) $ \json -> case (fromJSON json :: Result (Monoid.Last (Either Text Uniswap.UserContractState))) of
         Success (Monoid.Last (Just (Right Uniswap.Created))) -> Just ()
         _                                                    -> Nothing
     logString @(Builtin UniswapContracts) "liquidity pool created"
 
+    -- IHS Notes: allows Smart contract to wait for incoming endpoint calls
+    -- DO NOT Ctrl-C this process, press ENTER to exit gracefully
     _ <- liftIO getLine
     shutdown
 
