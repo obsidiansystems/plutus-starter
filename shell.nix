@@ -11,6 +11,7 @@ in
       haskell-language-server
       hlint
       stylish-haskell
+      pkgs.haskellPackages.ghcid
     ];
     packages = ps: builtins.attrValues (selectProjectPackages ps);
     exactDeps = true;
