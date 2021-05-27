@@ -10,6 +10,7 @@
 {-# LANGUAGE TypeFamilies       #-}
 {-# LANGUAGE TypeOperators      #-}
 {-# LANGUAGE ScopedTypeVariables      #-}
+{-# LANGUAGE RecursiveDo     #-}
 module Main
     ( main
     ) where
@@ -43,9 +44,9 @@ import           Prelude                                 hiding (init)
 import           Wallet.Emulator.Types                   (Wallet (..))
 import           Wallet.Types (NotificationError (..))
 
-
 main :: IO ()
-main = void $ Simulator.runSimulationWith handlers $ do
+main = mdo
+  eUniswapShutdown <- Simulator.runSimulationWith (handlers eUniswapShutdown) $ do
     logString @(Builtin UniswapContracts) "Starting Uniswap PAB webserver on port 8080. Press enter to exit."
     shutdown <- PAB.Server.startServerDebug
 
@@ -68,7 +69,7 @@ main = void $ Simulator.runSimulationWith handlers $ do
     us :: Uniswap.Uniswap <- flip Simulator.waitForState cidStart $ \json -> case (fromJSON json :: Result (Monoid.Last (Either Text Uniswap.Uniswap))) of
                     Success (Monoid.Last (Just (Right us))) -> Just us
                     _                                       -> Nothing
-    logString @(Builtin UniswapContracts) $ "Uniswap instance created: " ++ show us
+    logString @(Builtin UniswapContracts) $ "Uniswap instance created: " ++ show us ++ " Contract Instance ID: " ++ show cidStart
 
     cids :: Map.Map Wallet ContractInstanceId <- fmap Map.fromList $ forM wallets $ \w -> do
         cid <- Simulator.activateContract w $ UniswapUser us
@@ -91,10 +92,16 @@ main = void $ Simulator.runSimulationWith handlers $ do
         _                                                    -> Nothing
     logString @(Builtin UniswapContracts) "liquidity pool created"
 
-    -- IHS Notes: allows Smart contract to wait for incoming endpoint calls
+    -- IHS Notes: allows Smart contract to wait for incoming endpoint calls -- Simulation
     -- DO NOT Ctrl-C this process, press ENTER to exit gracefully
-    _ <- liftIO getLine
-    shutdown
+    -- shutdown
+    return (shutdown, us)
+  case eUniswapShutdown of
+    Left _ -> return () -- TODO: handle this better
+    Right (shutdown', _) -> do
+      _ <- liftIO getLine
+      -- _ <- runPAB shutdown' -- TODO: Fix this! "cyclic evaluation in fixIO"
+      return ()
 
 data UniswapContracts =
       Init
@@ -122,7 +129,12 @@ handleUniswapContract = Builtin.handleBuiltin getSchema getContract where
     UniswapStart   -> SomeBuiltin Uniswap.ownerEndpoint
     Init           -> SomeBuiltin US.initContract
 
-handlers :: SimulatorEffectHandlers (Builtin UniswapContracts)
-handlers =
-    Simulator.mkSimulatorHandlers @(Builtin UniswapContracts) [] -- [Init, UniswapStart, UniswapUser ???]
-    $ interpret handleUniswapContract
+handlers
+  :: Either PABError (a, Uniswap.Uniswap)
+  -> SimulatorEffectHandlers (Builtin UniswapContracts)
+handlers eUs = do
+    case eUs of
+      Left _ -> Simulator.mkSimulatorHandlers @(Builtin UniswapContracts) [Init, UniswapStart]
+        $ interpret handleUniswapContract
+      Right (_, us) -> Simulator.mkSimulatorHandlers @(Builtin UniswapContracts) [Init, UniswapStart, UniswapUser us]
+        $ interpret handleUniswapContract
