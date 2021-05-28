@@ -22,7 +22,10 @@ maintainer:         Your email
 -- extra-source-files: CHANGELOG.md
 
 library
+    reexported-modules:
+      Plutus.Contracts.Currency
     exposed-modules:
+      Plutus.Contracts.Uniswap
       Plutus.Contracts.Uniswap.OnChain
       Plutus.Contracts.Uniswap.OffChain
       Plutus.Contracts.Uniswap.Pool
@@ -84,7 +87,6 @@ executable plutus-starter-pab
     plutus-contract -any,
     plutus-pab -any,
     plutus-starter -any,
-    plutus-use-cases,
     aeson -any,
     freer-simple -any,
     prettyprinter -any,

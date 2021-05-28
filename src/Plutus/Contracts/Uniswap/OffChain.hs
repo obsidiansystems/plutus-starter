@@ -518,7 +518,7 @@ userEndpoints us =
       f (Proxy @"funds")  Funds           (\_us () -> funds))    >> userEndpoints us)
   where
     f :: forall l a p.
-         HasEndpoint l p UniswapUserSchema
+         (HasEndpoint l p UniswapUserSchema, Show a)
       => Proxy l
       -> (a -> UserContractState)
       -> (Uniswap -> p -> Contract (Last (Either Text UserContractState)) UniswapUserSchema Text a)
@@ -527,6 +527,8 @@ userEndpoints us =
         e <- runError $ do
             p <- endpoint @l
             c us p
+        -- Added to make user endpoint errors louder during simulation
+        logInfo @String $ printf "userEnpoints Error e: %s" (show e)
         tell $ Last $ Just $ case e of
             Left err -> Left err
             Right a  -> Right $ g a

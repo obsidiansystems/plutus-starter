@@ -74,11 +74,12 @@ main = mdo
     cids :: Map.Map Wallet ContractInstanceId <- fmap Map.fromList $ forM wallets $ \w -> do
         cid <- Simulator.activateContract w $ UniswapUser us
         logString @(Builtin UniswapContracts) $ "Uniswap user contract started for " ++ show w
-        _ <- Simulator.callEndpointOnInstance cid "funds" ()
-        v <- flip Simulator.waitForState cid $ \json -> case (fromJSON json :: Result (Monoid.Last (Either Text Uniswap.UserContractState))) of
-                Success (Monoid.Last (Just (Right (Uniswap.Funds v)))) -> Just v
-                _                                                      -> Nothing
-        logString @(Builtin UniswapContracts) $ "initial funds in wallet " ++ show w ++ ": " ++ show v
+        -- TODO: Temp commented out because the funds endpoint doesn't seem to work anyway
+        -- _ <- Simulator.callEndpointOnInstance cid "funds" ()
+        -- v <- flip Simulator.waitForState cid $ \json -> case (fromJSON json :: Result (Monoid.Last (Either Text Uniswap.UserContractState))) of
+        --         Success (Monoid.Last (Just (Right (Uniswap.Funds v)))) -> Just v
+        --         _                                                      -> Nothing
+        -- logString @(Builtin UniswapContracts) $ "initial funds in wallet " ++ show w ++ ": " ++ show v
         return (w, cid)
 
     -- IHS Notes: Creates a new liquidity pool for ADA and "A" Coin | 100k for ADA and 500k for "A" Coin
@@ -92,11 +93,29 @@ main = mdo
         _                                                    -> Nothing
     logString @(Builtin UniswapContracts) "liquidity pool created"
 
+    -- IHS Notes: Testing swap
+    -- let sp = Uniswap.SwapParams ada (coins Map.! "A") 0 100
+    -- mError <- Simulator.callEndpointOnInstance cidStart "swap" sp
+    -- case mError of
+    --   Just err -> do
+    --     logString @(Builtin UniswapContracts) ("error when performing swap: " ++ show err)
+    --     return ()
+    --   Nothing -> do
+    --     logString @(Builtin UniswapContracts) "performed a swap with ada and A Coin... i think."
+    --     return ()
+
     -- IHS Notes: allows Smart contract to wait for incoming endpoint calls -- Simulation
     -- DO NOT Ctrl-C this process, press ENTER to exit gracefully
     -- shutdown
+
+    -- IHS Notes: Checking balances before and after pressing ENTER in ghci while running main
+    bal1 <- Simulator.currentBalances
+    Simulator.logBalances @(Builtin UniswapContracts) bal1
     _ <- liftIO getLine
+    bal <- Simulator.currentBalances
+    Simulator.logBalances @(Builtin UniswapContracts) bal
     return (shutdown, Just us)
+  -- Note: once the runSimulation with has ended... it starts from Slot 0 again... soooo... yea... TODO: this didn't accomplish anything
   case uniswapServerHandle of
     Left _ -> return ()
     Right (shutdown', Nothing) -> void $ Simulator.runSimulationWith (handlers Nothing) $ do
