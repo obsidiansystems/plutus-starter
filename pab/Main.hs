@@ -46,7 +46,7 @@ import           Wallet.Types (NotificationError (..))
 
 main :: IO ()
 main = mdo
-  eUniswapShutdown <- Simulator.runSimulationWith (handlers eUniswapShutdown) $ do
+  uniswapServerHandle <- Simulator.runSimulationWith (handlers Nothing) $ do
     logString @(Builtin UniswapContracts) "Starting Uniswap PAB webserver on port 8080. Press enter to exit."
     shutdown <- PAB.Server.startServerDebug
 
@@ -95,13 +95,17 @@ main = mdo
     -- IHS Notes: allows Smart contract to wait for incoming endpoint calls -- Simulation
     -- DO NOT Ctrl-C this process, press ENTER to exit gracefully
     -- shutdown
-    return (shutdown, us)
-  case eUniswapShutdown of
-    Left _ -> return () -- TODO: handle this better
-    Right (shutdown', _) -> do
+    _ <- liftIO getLine
+    return (shutdown, Just us)
+  case uniswapServerHandle of
+    Left _ -> return ()
+    Right (shutdown', Nothing) -> void $ Simulator.runSimulationWith (handlers Nothing) $ do
+      logString @(Builtin UniswapContracts) "Hit Right(_, Nothing) case"
+      shutdown'
+    Right (shutdown', mUs) -> void $ Simulator.runSimulationWith (handlers mUs) $ do
+      logString @(Builtin UniswapContracts) "Hit Right(_, Just ...) case"
       _ <- liftIO getLine
-      -- _ <- runPAB shutdown' -- TODO: Fix this! "cyclic evaluation in fixIO"
-      return ()
+      shutdown'
 
 data UniswapContracts =
       Init
@@ -130,11 +134,11 @@ handleUniswapContract = Builtin.handleBuiltin getSchema getContract where
     Init           -> SomeBuiltin US.initContract
 
 handlers
-  :: Either PABError (a, Uniswap.Uniswap)
+  :: Maybe Uniswap.Uniswap
   -> SimulatorEffectHandlers (Builtin UniswapContracts)
-handlers eUs = do
-    case eUs of
-      Left _ -> Simulator.mkSimulatorHandlers @(Builtin UniswapContracts) [Init, UniswapStart]
+handlers mUs = do
+    case mUs of
+      Nothing-> Simulator.mkSimulatorHandlers @(Builtin UniswapContracts) [Init, UniswapStart]
         $ interpret handleUniswapContract
-      Right (_, us) -> Simulator.mkSimulatorHandlers @(Builtin UniswapContracts) [Init, UniswapStart, UniswapUser us]
+      Just us -> Simulator.mkSimulatorHandlers @(Builtin UniswapContracts) [Init, UniswapStart, UniswapUser us]
         $ interpret handleUniswapContract
