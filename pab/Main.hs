@@ -93,27 +93,16 @@ main = mdo
         _                                                    -> Nothing
     logString @(Builtin UniswapContracts) "liquidity pool created"
 
-    -- IHS Notes: Testing swap
-    -- let sp = Uniswap.SwapParams ada (coins Map.! "A") 0 100
-    -- mError <- Simulator.callEndpointOnInstance cidStart "swap" sp
-    -- case mError of
-    --   Just err -> do
-    --     logString @(Builtin UniswapContracts) ("error when performing swap: " ++ show err)
-    --     return ()
-    --   Nothing -> do
-    --     logString @(Builtin UniswapContracts) "performed a swap with ada and A Coin... i think."
-    --     return ()
-
-    -- IHS Notes: allows Smart contract to wait for incoming endpoint calls -- Simulation
-    -- DO NOT Ctrl-C this process, press ENTER to exit gracefully
-    -- shutdown
-
-    -- IHS Notes: Checking balances before and after pressing ENTER in ghci while running main
+    -- IHS Notes: Checking balances before pressing ENTER in ghci while running main
     bal1 <- Simulator.currentBalances
     Simulator.logBalances @(Builtin UniswapContracts) bal1
+
     _ <- liftIO getLine
+
+    -- IHS Notes: Checking balances before pressing ENTER in ghci while running main
     bal <- Simulator.currentBalances
     Simulator.logBalances @(Builtin UniswapContracts) bal
+
     return (shutdown, Just us)
   -- Note: once the runSimulation with has ended... it starts from Slot 0 again... soooo... yea... TODO: this didn't accomplish anything
   case uniswapServerHandle of
