@@ -97,6 +97,11 @@ main = mdo
     bal1 <- Simulator.currentBalances
     Simulator.logBalances @(Builtin UniswapContracts) bal1
 
+    -- IHS Notes: Mock chain is now in a listening state.
+    -- Calls made to http://localhost:8080/api/new/contract/instance/5e9de181-d3a2-4116-b957-33f59b13c7c8/endpoint/funds
+    -- or any other action, .../endpoint/{action}, will have to be followed with a call to
+    -- http://localhost:8080/api/new/contract/instance/{ContractInstanceId}/status in order to get the
+    -- response from the `observableState` field
     _ <- liftIO getLine
 
     -- IHS Notes: Checking balances before pressing ENTER in ghci while running main

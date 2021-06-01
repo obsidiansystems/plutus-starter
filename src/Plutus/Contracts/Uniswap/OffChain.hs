@@ -528,7 +528,7 @@ userEndpoints us =
             p <- endpoint @l
             c us p
         -- Added to make user endpoint errors louder during simulation
-        logInfo @String $ printf "userEnpoints Error e: %s" (show e)
+        logInfo @String $ printf "userEndpoints Error e: %s" (show e)
         tell $ Last $ Just $ case e of
             Left err -> Left err
             Right a  -> Right $ g a
