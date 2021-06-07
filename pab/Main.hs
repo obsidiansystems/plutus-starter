@@ -74,19 +74,21 @@ main = mdo
     cids :: Map.Map Wallet ContractInstanceId <- fmap Map.fromList $ forM wallets $ \w -> do
         cid <- Simulator.activateContract w $ UniswapUser us
         logString @(Builtin UniswapContracts) $ "Uniswap user contract started for " ++ show w
-        -- TODO: Temp commented out because the funds endpoint doesn't seem to work anyway
-        -- _ <- Simulator.callEndpointOnInstance cid "funds" ()
-        -- v <- flip Simulator.waitForState cid $ \json -> case (fromJSON json :: Result (Monoid.Last (Either Text Uniswap.UserContractState))) of
-        --         Success (Monoid.Last (Just (Right (Uniswap.Funds v)))) -> Just v
-        --         _                                                      -> Nothing
-        -- logString @(Builtin UniswapContracts) $ "initial funds in wallet " ++ show w ++ ": " ++ show v
+        Simulator.waitForEndpoint cid "funds"
+        _ <- Simulator.callEndpointOnInstance cid "funds" ()
+        v <- flip Simulator.waitForState cid $ \json -> case (fromJSON json :: Result (Monoid.Last (Either Text Uniswap.UserContractState))) of
+                Success (Monoid.Last (Just (Right (Uniswap.Funds v)))) -> Just v
+                _                                                      -> Nothing
+        logString @(Builtin UniswapContracts) $ "initial funds in wallet " ++ show w ++ ": " ++ show v
         return (w, cid)
 
     -- IHS Notes: Creates a new liquidity pool for ADA and "A" Coin | 100k for ADA and 500k for "A" Coin
     let cp = Uniswap.CreateParams ada (coins Map.! "A") 100000 500000
     logString @(Builtin UniswapContracts) $ "creating liquidity pool: " ++ show (encode cp)
     -- IHS Notes: How to send request to smart contract instances with API call and values, only return Maybe Error
-    _ :: Maybe Wallet.Types.NotificationError <- Simulator.callEndpointOnInstance (cids Map.! Wallet 2) "create" cp
+    let cid2 = cids Map.! Wallet 2
+    Simulator.waitForEndpoint cid2 "create"
+    _  <- Simulator.callEndpointOnInstance cid2 "create" cp
     -- IHS: use waitForState to wait for the smart contract response
     flip Simulator.waitForState (cids Map.! Wallet 2) $ \json -> case (fromJSON json :: Result (Monoid.Last (Either Text Uniswap.UserContractState))) of
         Success (Monoid.Last (Just (Right Uniswap.Created))) -> Just ()
