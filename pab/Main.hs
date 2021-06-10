@@ -74,12 +74,12 @@ main = mdo
     cids :: Map.Map Wallet ContractInstanceId <- fmap Map.fromList $ forM wallets $ \w -> do
         cid <- Simulator.activateContract w $ UniswapUser us
         logString @(Builtin UniswapContracts) $ "Uniswap user contract started for " ++ show w
-        Simulator.waitForEndpoint cid "funds"
-        _ <- Simulator.callEndpointOnInstance cid "funds" ()
-        v <- flip Simulator.waitForState cid $ \json -> case (fromJSON json :: Result (Monoid.Last (Either Text Uniswap.UserContractState))) of
-                Success (Monoid.Last (Just (Right (Uniswap.Funds v)))) -> Just v
-                _                                                      -> Nothing
-        logString @(Builtin UniswapContracts) $ "initial funds in wallet " ++ show w ++ ": " ++ show v
+        -- Simulator.waitForEndpoint cid "funds"
+        -- _ <- Simulator.callEndpointOnInstance cid "funds" ()
+        -- v <- flip Simulator.waitForState cid $ \json -> case (fromJSON json :: Result (Monoid.Last (Either Text Uniswap.UserContractState))) of
+        --         Success (Monoid.Last (Just (Right (Uniswap.Funds v)))) -> Just v
+        --         _                                                      -> Nothing
+        -- logString @(Builtin UniswapContracts) $ "initial funds in wallet " ++ show w ++ ": " ++ show v
         return (w, cid)
 
     -- IHS Notes: Creates a new liquidity pool for ADA and "A" Coin | 100k for ADA and 500k for "A" Coin
