@@ -1,18 +1,18 @@
 let
-  project = import ./default.nix {};
+  packages = import ./.;
+  inherit (packages) pkgs plutus-starter;
+  inherit (plutus-starter) haskell;
 
-  inherit (project) plutus pkgs;
-  inherit (pkgs.haskell-nix.haskellLib) selectProjectPackages;
 in
-  project.haskellNixProject.shellFor {
+  haskell.project.shellFor {
     withHoogle = false;
-    nativeBuildInputs = with plutus; [
-      pkgs.cabalWrapped
-      haskell-language-server
+
+    nativeBuildInputs = with plutus-starter; [
       hlint
+      cabal-install
+      haskell-language-server
       stylish-haskell
-      pkgs.haskellPackages.ghcid
+      pkgs.niv
+      cardano-repo-tool
     ];
-    packages = ps: builtins.attrValues (selectProjectPackages ps);
-    exactDeps = true;
   }
