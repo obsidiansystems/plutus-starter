@@ -25,6 +25,7 @@ library
     reexported-modules:
       Plutus.Contracts.Currency
     exposed-modules:
+      Plutus.Contracts.Game
       Plutus.Contracts.Uniswap
       Plutus.Contracts.Uniswap.OnChain
       Plutus.Contracts.Uniswap.OffChain
@@ -36,6 +37,7 @@ library
       aeson,
       bytestring,
       containers,
+      freer-extras,
       freer-simple,
       playground-common,
       plutus-contract,
