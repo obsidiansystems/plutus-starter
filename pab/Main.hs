@@ -15,34 +15,32 @@ module Main
     ( main
     ) where
 
-import           Control.Monad                           (forM, void)
-import           Control.Monad.Freer                     (Eff, Member, interpret, type (~>))
-import           Control.Monad.Freer.Error               (Error)
-import           Control.Monad.Freer.Extras.Log          (LogMsg)
-import           Control.Monad.IO.Class                  (MonadIO (..))
-import           Data.Aeson                              (FromJSON, Result (..), ToJSON, encode, fromJSON)
-import qualified Data.Map.Strict                         as Map
-import qualified Data.Monoid                             as Monoid
-import qualified Data.Semigroup                          as Semigroup
-import           Data.Text                               (Text)
-import           Data.Text.Prettyprint.Doc               (Pretty (..), viaShow)
-import           GHC.Generics                            (Generic)
-import           Ledger.Ada                              (adaSymbol, adaToken)
+import           Control.Monad
+import           Control.Monad.Freer                (Eff, Member, interpret, type (~>))
+import           Control.Monad.Freer.Error          (Error)
+import           Control.Monad.Freer.Extras.Log     (LogMsg)
+import           Control.Monad.IO.Class             (MonadIO (..))
+import           Data.Aeson                         (FromJSON, Result (..), ToJSON, encode, fromJSON)
+import qualified Data.Map                            as Map
+import qualified Data.Monoid                         as Monoid
+import qualified Data.Semigroup                      as Semigroup
+import           Data.Text                           (Text)
+import           Data.Text.Prettyprint.Doc           (Pretty (..), viaShow)
+import           GHC.Generics                        (Generic)
+import           Ledger.Ada                          (adaSymbol, adaToken)
 import           Plutus.Contract
-import qualified Plutus.Contracts.Currency               as Currency
-import qualified Plutus.Contracts.Uniswap                as Uniswap
-import           Plutus.PAB.Effects.Contract             (ContractEffect (..))
-import           Plutus.PAB.Effects.Contract.Builtin     (Builtin, SomeBuiltin (..), type (.\\))
-import qualified Plutus.PAB.Effects.Contract.Builtin     as Builtin
-import           Plutus.PAB.Effects.ContractTest.Uniswap as US
-import           Plutus.PAB.Monitoring.PABLogMsg         (PABMultiAgentMsg)
-import           Plutus.PAB.Simulator                    (SimulatorEffectHandlers, logString)
-import qualified Plutus.PAB.Simulator                    as Simulator
-import           Plutus.PAB.Types                        (PABError (..))
-import qualified Plutus.PAB.Webserver.Server             as PAB.Server
-import           Prelude                                 hiding (init)
-import           Wallet.Emulator.Types                   (Wallet (..))
-import           Wallet.Types (NotificationError (..))
+import qualified Plutus.Contracts.Currency           as Currency
+import qualified Plutus.Contracts.Uniswap            as Uniswap
+import           Plutus.Contracts.Uniswap.Trace      as Trace
+import           Plutus.PAB.Effects.Contract         (ContractEffect (..))
+import           Plutus.PAB.Effects.Contract.Builtin (Builtin, SomeBuiltin (..))
+import qualified Plutus.PAB.Effects.Contract.Builtin as Builtin
+import           Plutus.PAB.Monitoring.PABLogMsg     (PABMultiAgentMsg)
+import           Plutus.PAB.Simulator                (SimulatorEffectHandlers, logString)
+import qualified Plutus.PAB.Simulator                as Simulator
+import           Plutus.PAB.Types                    (PABError (..))
+import qualified Plutus.PAB.Webserver.Server         as PAB.Server
+import           Wallet.Emulator.Types               (Wallet (..))
 
 main :: IO ()
 main = mdo
@@ -140,13 +138,13 @@ handleUniswapContract ::
     ~> Eff effs
 handleUniswapContract = Builtin.handleBuiltin getSchema getContract where
   getSchema = \case
-    UniswapUser _ -> Builtin.endpointsToSchemas @(Uniswap.UniswapUserSchema .\\ BlockchainActions)
-    UniswapStart  -> Builtin.endpointsToSchemas @(Uniswap.UniswapOwnerSchema .\\ BlockchainActions)
+    UniswapUser _ -> Builtin.endpointsToSchemas @Uniswap.UniswapUserSchema
+    UniswapStart  -> Builtin.endpointsToSchemas @Uniswap.UniswapOwnerSchema
     Init          -> Builtin.endpointsToSchemas @Empty
   getContract = \case
     UniswapUser us -> SomeBuiltin $ Uniswap.userEndpoints us
     UniswapStart   -> SomeBuiltin Uniswap.ownerEndpoint
-    Init           -> SomeBuiltin US.initContract
+    Init           -> SomeBuiltin Uniswap.setupTokens
 
 handlers
   :: Maybe Uniswap.Uniswap

@@ -29,12 +29,14 @@ library
       Plutus.Contracts.Uniswap.OnChain
       Plutus.Contracts.Uniswap.OffChain
       Plutus.Contracts.Uniswap.Pool
+      Plutus.Contracts.Uniswap.Trace
       Plutus.Contracts.Uniswap.Types
     build-depends:
       base >= 4.9 && < 5,
       aeson,
       bytestring,
       containers,
+      freer-simple,
       playground-common,
       plutus-contract,
       plutus-tx-plugin,
