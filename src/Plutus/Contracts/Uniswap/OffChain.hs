@@ -72,7 +72,7 @@ type UniswapUserSchema =
 
 -- | Type of the Uniswap user contract state.
 data UserContractState =
-      Pools [((Coin A, Amount A), (Coin B, Amount B))]
+      Pools [((Coin A, Amount A), (Coin B, Amount B), Amount Liquidity)]
     | Funds Value
     | Created
     | Swapped
@@ -372,12 +372,12 @@ swap us SwapParams{..} = do
 
 -- | Finds all liquidity pools and their liquidity belonging to the Uniswap instance.
 -- This merely inspects the blockchain and does not issue any transactions.
-pools :: forall w s. HasBlockchainActions s => Uniswap -> Contract w s Text [((Coin A, Amount A), (Coin B, Amount B))]
+pools :: forall w s. HasBlockchainActions s => Uniswap -> Contract w s Text [((Coin A, Amount A), (Coin B, Amount B), Amount Liquidity)]
 pools us = do
     utxos <- utxoAt (uniswapAddress us)
     go $ snd <$> Map.toList utxos
   where
-    go :: [TxOutTx] -> Contract w s Text [((Coin A, Amount A), (Coin B, Amount B))]
+    go :: [TxOutTx] -> Contract w s Text [((Coin A, Amount A), (Coin B, Amount B), Amount Liquidity)]
     go []       = return []
     go (o : os) = do
         let v = txOutValue $ txOutTxOut o
@@ -386,13 +386,14 @@ pools us = do
                 d <- getUniswapDatum o
                 case d of
                     Factory _ -> go os
-                    Pool lp _ -> do
+                    Pool lp lqa -> do
                         let coinA = lpCoinA lp
                             coinB = lpCoinB lp
                             amtA  = amountOf v coinA
                             amtB  = amountOf v coinB
-                            s     = ((coinA, amtA), (coinB, amtB))
+                            s     = ((coinA, amtA), (coinB, amtB), lqa)
                         logInfo $ "found pool: " ++ show s
+                        logInfo $ "total liquidity: " ++ show lqa
                         ss <- go os
                         return $ s : ss
             else go os
