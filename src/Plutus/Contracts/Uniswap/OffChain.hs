@@ -29,6 +29,8 @@ module Plutus.Contracts.Uniswap.OffChain
     ) where
 
 import           Control.Monad                    hiding (fmap)
+import qualified Data.ByteString                  as BS
+import qualified Data.ByteString.Lazy.Char8       as BSC
 import qualified Data.Map                         as Map
 import           Data.Monoid                      (Last (..))
 import           Data.Proxy                       (Proxy (..))
@@ -45,6 +47,7 @@ import           Plutus.Contracts.Uniswap.Pool
 import           Plutus.Contracts.Uniswap.Types
 import qualified PlutusTx
 import           PlutusTx.Prelude                 hiding (Semigroup (..), dropWhile, flip, unless)
+import           Plutus.V1.Ledger.Value           (unCurrencySymbol, unAssetClass, unTokenName)
 import           Prelude                          as Haskell (Int, Semigroup (..), String, div, dropWhile, flip, show,
                                                               (^))
 import           Text.Printf                      (printf)
@@ -72,7 +75,7 @@ type UniswapUserSchema =
 
 -- | Type of the Uniswap user contract state.
 data UserContractState =
-      Pools [((Coin A, Amount A), (Coin B, Amount B), Amount Liquidity)]
+      Pools [((Coin A, Amount A), (Coin B, Amount B), (String, Amount Liquidity))] -- ByteString is Liquidity Pool Name
     | Funds Value
     | Created
     | Swapped
@@ -130,7 +133,7 @@ liquidityCoin :: CurrencySymbol -- ^ The currency identifying the Uniswap instan
               -> Coin A         -- ^ One coin in the liquidity pair.
               -> Coin B         -- ^ The other coin in the liquidity pair.
               -> Coin Liquidity
-liquidityCoin cs coinA coinB = mkCoin (liquidityCurrency $ uniswap cs) $ lpTicker $ LiquidityPool coinA coinB
+liquidityCoin cs coinA coinB = mkCoin (liquidityCurrency $ uniswap cs) $ lpTicker $ LiquidityPool coinA coinB $ unCurrencySymbol (liquidityCurrency $ uniswap cs)
 
 -- | Parameters for the @create@-endpoint, which creates a new liquidity pool.
 data CreateParams = CreateParams
@@ -195,7 +198,13 @@ create us CreateParams{..} = do
     when (cpAmountA <= 0 || cpAmountB <= 0) $ throwError "amounts must be positive"
     (oref, o, lps) <- findUniswapFactory us
     let liquidity = calculateInitialLiquidity cpAmountA cpAmountB
-        lp        = LiquidityPool {lpCoinA = cpCoinA, lpCoinB = cpCoinB}
+        lp        = LiquidityPool
+                      { lpCoinA = cpCoinA
+                      , lpCoinB = cpCoinB
+                      , lpName = ((unTokenName $ snd $ unAssetClass $ unCoin cpCoinA)
+                          `BS.append` "VS"
+                          `BS.append` (unTokenName $ snd $ unAssetClass $ unCoin cpCoinB))
+                      }
     let usInst   = uniswapInstance us
         usScript = uniswapScript us
         usDat1   = Factory $ lp : lps
@@ -372,12 +381,12 @@ swap us SwapParams{..} = do
 
 -- | Finds all liquidity pools and their liquidity belonging to the Uniswap instance.
 -- This merely inspects the blockchain and does not issue any transactions.
-pools :: forall w s. HasBlockchainActions s => Uniswap -> Contract w s Text [((Coin A, Amount A), (Coin B, Amount B), Amount Liquidity)]
+pools :: forall w s. HasBlockchainActions s => Uniswap -> Contract w s Text [((Coin A, Amount A), (Coin B, Amount B), (String, Amount Liquidity))]
 pools us = do
     utxos <- utxoAt (uniswapAddress us)
     go $ snd <$> Map.toList utxos
   where
-    go :: [TxOutTx] -> Contract w s Text [((Coin A, Amount A), (Coin B, Amount B), Amount Liquidity)]
+    go :: [TxOutTx] -> Contract w s Text [((Coin A, Amount A), (Coin B, Amount B), (String, Amount Liquidity))]
     go []       = return []
     go (o : os) = do
         let v = txOutValue $ txOutTxOut o
@@ -391,7 +400,7 @@ pools us = do
                             coinB = lpCoinB lp
                             amtA  = amountOf v coinA
                             amtB  = amountOf v coinB
-                            s     = ((coinA, amtA), (coinB, amtB), lqa)
+                            s     = ((coinA, amtA), (coinB, amtB), ((BSC.unpack $ BSC.fromStrict $ lpName lp), lqa))
                         logInfo $ "found pool: " ++ show s
                         logInfo $ "total liquidity: " ++ show lqa
                         ss <- go os
@@ -405,8 +414,11 @@ pools us = do
 funds :: HasBlockchainActions s => Contract w s Text Value
 funds = do
     pkh <- pubKeyHash <$> ownPubKey
-    os  <- map snd . Map.toList <$> utxoAt (pubKeyHashAddress pkh)
-    return $ mconcat [txOutValue $ txOutTxOut o | o <- os]
+    os  <- Map.toList <$> utxoAt (pubKeyHashAddress pkh)
+    -- TODO: Is there a way to respond with Liquidity Pool Name with unspent transactions?
+    logInfo $ "all utxoAt Info " ++ show os
+    let os' = map snd os
+    return $ mconcat [txOutValue $ txOutTxOut o | o <- os']
 
 getUniswapDatum :: TxOutTx -> Contract w s Text UniswapDatum
 getUniswapDatum o = case txOutDatumHash $ txOutTxOut o of
@@ -454,8 +466,8 @@ findUniswapFactoryAndPool :: HasBlockchainActions s
 findUniswapFactoryAndPool us coinA coinB = do
     (oref1, o1, lps) <- findUniswapFactory us
     case [ lp'
-         | lp' <- lps
-         , lp' == LiquidityPool coinA coinB
+         | lp'@(LiquidityPool ca cb _) <- lps
+         , ca == coinA && cb == coinB
          ] of
         [lp] -> do
             (oref2, o2, a) <- findUniswapPool us lp

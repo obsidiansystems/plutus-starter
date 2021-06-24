@@ -40,6 +40,7 @@ library
       plutus-tx-plugin,
       plutus-tx,
       plutus-ledger,
+      plutus-ledger-api,
       plutus-use-cases,
       text
     hs-source-dirs: src examples/src

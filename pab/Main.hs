@@ -84,6 +84,7 @@ main = mdo
 
     -- IHS Notes: Creates a new liquidity pool for ADA and "A" Coin | 100k for ADA and 500k for "A" Coin
     let cp = Uniswap.CreateParams ada (coins Map.! "A") 100000 500000
+        cp2 = Uniswap.CreateParams ada (coins Map.! "B") 100000 500000
     logString @(Builtin UniswapContracts) $ "creating liquidity pool: " ++ show (encode cp)
     -- IHS Notes: How to send request to smart contract instances with API call and values, only return Maybe Error
     let cid2 = cids Map.! Wallet 2
@@ -94,6 +95,14 @@ main = mdo
         Success (Monoid.Last (Just (Right Uniswap.Created))) -> Just ()
         _                                                    -> Nothing
     logString @(Builtin UniswapContracts) "liquidity pool created"
+
+    Simulator.waitForEndpoint cid2 "create"
+    _  <- Simulator.callEndpointOnInstance cid2 "create" cp2
+    -- IHS: use waitForState to wait for the smart contract response
+    flip Simulator.waitForState (cids Map.! Wallet 2) $ \json -> case (fromJSON json :: Result (Monoid.Last (Either Text Uniswap.UserContractState))) of
+        Success (Monoid.Last (Just (Right Uniswap.Created))) -> Just ()
+        _                                                    -> Nothing
+    logString @(Builtin UniswapContracts) "second liquidity pool created"
 
     -- IHS Notes: Checking balances before pressing ENTER in ghci while running main
     bal1 <- Simulator.currentBalances

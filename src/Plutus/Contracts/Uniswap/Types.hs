@@ -104,6 +104,7 @@ PlutusTx.makeLift ''Uniswap
 data LiquidityPool = LiquidityPool
     { lpCoinA :: Coin A
     , lpCoinB :: Coin B
+    , lpName :: ByteString
     }
     deriving (Haskell.Show, Generic, ToJSON, FromJSON, ToSchema)
 PlutusTx.makeIsDataIndexed ''LiquidityPool [('LiquidityPool, 0)]
