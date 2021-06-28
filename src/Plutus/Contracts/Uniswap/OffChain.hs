@@ -201,9 +201,7 @@ create us CreateParams{..} = do
         lp        = LiquidityPool
                       { lpCoinA = cpCoinA
                       , lpCoinB = cpCoinB
-                      , lpName = ((unTokenName $ snd $ unAssetClass $ unCoin cpCoinA)
-                          `BS.append` "VS"
-                          `BS.append` (unTokenName $ snd $ unAssetClass $ unCoin cpCoinB))
+                      , lpName = unTokenName $ lpTicker $ LiquidityPool cpCoinA cpCoinB $ unCurrencySymbol (liquidityCurrency us)
                       }
     let usInst   = uniswapInstance us
         usScript = uniswapScript us
@@ -414,9 +412,7 @@ pools us = do
 funds :: HasBlockchainActions s => Contract w s Text Value
 funds = do
     pkh <- pubKeyHash <$> ownPubKey
-    os  <- Map.toList <$> utxoAt (pubKeyHashAddress pkh)
-    -- TODO: Is there a way to respond with Liquidity Pool Name with unspent transactions?
-    logInfo $ "all utxoAt Info " ++ show os
+    os <- Map.toList <$> utxoAt (pubKeyHashAddress pkh)
     let os' = map snd os
     return $ mconcat [txOutValue $ txOutTxOut o | o <- os']
 
