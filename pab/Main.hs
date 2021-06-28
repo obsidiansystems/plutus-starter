@@ -42,7 +42,7 @@ import           Plutus.PAB.Types                        (PABError (..))
 import qualified Plutus.PAB.Webserver.Server             as PAB.Server
 import           Prelude                                 hiding (init)
 import           Wallet.Emulator.Types                   (Wallet (..))
-import           Wallet.Types (NotificationError (..))
+import           Wallet.Types ()
 
 main :: IO ()
 main = mdo

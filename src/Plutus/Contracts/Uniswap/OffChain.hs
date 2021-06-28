@@ -29,8 +29,6 @@ module Plutus.Contracts.Uniswap.OffChain
     ) where
 
 import           Control.Monad                    hiding (fmap)
-import qualified Data.ByteString                  as BS
-import qualified Data.ByteString.Lazy.Char8       as BSC
 import qualified Data.Map                         as Map
 import           Data.Monoid                      (Last (..))
 import           Data.Proxy                       (Proxy (..))
@@ -47,9 +45,7 @@ import           Plutus.Contracts.Uniswap.Pool
 import           Plutus.Contracts.Uniswap.Types
 import qualified PlutusTx
 import           PlutusTx.Prelude                 hiding (Semigroup (..), dropWhile, flip, unless)
-import           Plutus.V1.Ledger.Value           (unCurrencySymbol, unAssetClass, unTokenName)
-import           Prelude                          as Haskell (Int, Semigroup (..), String, div, dropWhile, flip, show,
-                                                              (^))
+import           Prelude                          as Haskell (Semigroup (..), dropWhile, flip)
 import           Text.Printf                      (printf)
 
 data Uniswapping
