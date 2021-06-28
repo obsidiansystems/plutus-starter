@@ -75,7 +75,7 @@ type UniswapUserSchema =
 
 -- | Type of the Uniswap user contract state.
 data UserContractState =
-      Pools [((Coin A, Amount A), (Coin B, Amount B), (String, Amount Liquidity))] -- ByteString is Liquidity Pool Name
+      Pools [((Coin A, Amount A), (Coin B, Amount B), (TokenName, Amount Liquidity))]
     | Funds Value
     | Created
     | Swapped
@@ -133,7 +133,7 @@ liquidityCoin :: CurrencySymbol -- ^ The currency identifying the Uniswap instan
               -> Coin A         -- ^ One coin in the liquidity pair.
               -> Coin B         -- ^ The other coin in the liquidity pair.
               -> Coin Liquidity
-liquidityCoin cs coinA coinB = mkCoin (liquidityCurrency $ uniswap cs) $ lpTicker $ LiquidityPool coinA coinB $ unCurrencySymbol (liquidityCurrency $ uniswap cs)
+liquidityCoin cs coinA coinB = mkCoin (liquidityCurrency $ uniswap cs) $ lpTicker $ LiquidityPool coinA coinB
 
 -- | Parameters for the @create@-endpoint, which creates a new liquidity pool.
 data CreateParams = CreateParams
@@ -201,7 +201,6 @@ create us CreateParams{..} = do
         lp        = LiquidityPool
                       { lpCoinA = cpCoinA
                       , lpCoinB = cpCoinB
-                      , lpName = unTokenName $ lpTicker $ LiquidityPool cpCoinA cpCoinB $ unCurrencySymbol (liquidityCurrency us)
                       }
     let usInst   = uniswapInstance us
         usScript = uniswapScript us
@@ -379,12 +378,12 @@ swap us SwapParams{..} = do
 
 -- | Finds all liquidity pools and their liquidity belonging to the Uniswap instance.
 -- This merely inspects the blockchain and does not issue any transactions.
-pools :: forall w s. HasBlockchainActions s => Uniswap -> Contract w s Text [((Coin A, Amount A), (Coin B, Amount B), (String, Amount Liquidity))]
+pools :: forall w s. HasBlockchainActions s => Uniswap -> Contract w s Text [((Coin A, Amount A), (Coin B, Amount B), (TokenName, Amount Liquidity))]
 pools us = do
     utxos <- utxoAt (uniswapAddress us)
     go $ snd <$> Map.toList utxos
   where
-    go :: [TxOutTx] -> Contract w s Text [((Coin A, Amount A), (Coin B, Amount B), (String, Amount Liquidity))]
+    go :: [TxOutTx] -> Contract w s Text [((Coin A, Amount A), (Coin B, Amount B), (TokenName, Amount Liquidity))]
     go []       = return []
     go (o : os) = do
         let v = txOutValue $ txOutTxOut o
@@ -398,7 +397,7 @@ pools us = do
                             coinB = lpCoinB lp
                             amtA  = amountOf v coinA
                             amtB  = amountOf v coinB
-                            s     = ((coinA, amtA), (coinB, amtB), ((BSC.unpack $ BSC.fromStrict $ lpName lp), lqa))
+                            s     = ((coinA, amtA), (coinB, amtB), ((lpTicker lp), lqa))
                         logInfo $ "found pool: " ++ show s
                         logInfo $ "total liquidity: " ++ show lqa
                         ss <- go os
@@ -462,7 +461,7 @@ findUniswapFactoryAndPool :: HasBlockchainActions s
 findUniswapFactoryAndPool us coinA coinB = do
     (oref1, o1, lps) <- findUniswapFactory us
     case [ lp'
-         | lp'@(LiquidityPool ca cb _) <- lps
+         | lp'@(LiquidityPool ca cb) <- lps
          , ca == coinA && cb == coinB
          ] of
         [lp] -> do
