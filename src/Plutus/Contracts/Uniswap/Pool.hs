@@ -27,7 +27,13 @@ calculateInitialLiquidity outA outB = Amount $ case isqrt (unAmount outA * unAmo
     _           -> traceError "insufficient liquidity"
 
 {-# INLINABLE calculateAdditionalLiquidity #-}
-calculateAdditionalLiquidity :: Amount A -> Amount B -> Amount Liquidity -> Amount A -> Amount B -> Amount Liquidity
+calculateAdditionalLiquidity
+  :: Amount A -- Liquidity Pool Balance for first coin of token pool
+  -> Amount B -- Liquidity Pool Balance for second coin of token pool
+  -> Amount Liquidity -- Liquidity Pool Balance
+  -> Amount A -- Amount of first coin being added to token pool
+  -> Amount B -- Amount of second coin being added to token pool
+  -> Amount Liquidity -- Amount of Liquidity to be recieved
 calculateAdditionalLiquidity oldA' oldB' liquidity delA' delB' =
   case rsqrt ratio of
     Imaginary       -> traceError "insufficient liquidity"
@@ -48,7 +54,12 @@ calculateAdditionalLiquidity oldA' oldB' liquidity delA' delB' =
 
 {-# INLINABLE calculateRemoval #-}
 -- | See Definition 3 of <https://github.com/runtimeverification/verified-smart-contracts/blob/c40c98d6ae35148b76742aaaa29e6eaa405b2f93/uniswap/x-y-k.pdf>.
-calculateRemoval :: Amount A -> Amount B -> Amount Liquidity -> Amount Liquidity -> (Amount A, Amount B)
+calculateRemoval
+  :: Amount A  -- amount of first coin of token pool
+  -> Amount B  -- amount of second coin of token pool
+  -> Amount Liquidity -- total amount of liquidity in token pool
+  -> Amount Liquidity -- amount of liquidity being redeemed from token pool
+  -> (Amount A, Amount B) -- (amount of first coin redeemed, amount of second coin redeemed)
 calculateRemoval inA inB liquidity' diff' = (f inA, f inB)
   where
     f :: Amount a -> Amount a
@@ -79,6 +90,7 @@ checkSwap oldA' oldB' newA' newB' =
     newA = unAmount newA'
     newB = unAmount newB'
 
+    -- use max 0 just in case calculation result is less than 0
     inA = max 0 $ newA - oldA
     inB = max 0 $ newB - oldB
     -- The uniswap fee is 0.3%; here it is multiplied by 1000, so that the

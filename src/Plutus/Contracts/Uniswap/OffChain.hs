@@ -74,10 +74,10 @@ data UserContractState =
       Pools [((Coin A, Amount A), (Coin B, Amount B), (TokenName, Amount Liquidity))]
     | Funds Value
     | Created
-    | Swapped
-    | Added
-    | Removed
-    | Closed
+    | Swapped Tx -- TODO: This Tx may be more information than needed to send over websocket for tx estimation feature, consider consolidating
+    | Added Tx   -- TODO: This Tx may be more information than needed to send over websocket for tx estimation feature, consider consolidating
+    | Removed Tx -- TODO: This Tx may be more information than needed to send over websocket for tx estimation feature, consider consolidating
+    | Closed Tx  -- TODO: This Tx may be more information than needed to send over websocket for tx estimation feature, consider consolidating
     | Stopped
     deriving (Show, Generic, FromJSON, ToJSON)
 
@@ -188,7 +188,7 @@ start = do
     return us
 
 -- | Creates a liquidity pool for a pair of coins. The creator provides liquidity for both coins and gets liquidity tokens in return.
-create :: HasBlockchainActions s => Uniswap -> CreateParams -> Contract w s Text ()
+create :: HasBlockchainActions s => Uniswap -> CreateParams -> Contract w s Text Tx
 create us CreateParams{..} = do
     when (unCoin cpCoinA == unCoin cpCoinB) $ throwError "coins must be different"
     when (cpAmountA <= 0 || cpAmountB <= 0) $ throwError "amounts must be positive"
@@ -221,9 +221,10 @@ create us CreateParams{..} = do
     void $ awaitTxConfirmed $ txId ledgerTx
 
     logInfo $ "created liquidity pool: " ++ show lp
+    return ledgerTx
 
 -- | Closes a liquidity pool by burning all remaining liquidity tokens in exchange for all liquidity remaining in the pool.
-close :: HasBlockchainActions s => Uniswap -> CloseParams -> Contract w s Text ()
+close :: HasBlockchainActions s => Uniswap -> CloseParams -> Contract w s Text Tx
 close us CloseParams{..} = do
     ((oref1, o1, lps), (oref2, o2, lp, liquidity)) <- findUniswapFactoryAndPool us clpCoinA clpCoinB
     pkh                                            <- pubKeyHash <$> ownPubKey
@@ -254,9 +255,10 @@ close us CloseParams{..} = do
     void $ awaitTxConfirmed $ txId ledgerTx
 
     logInfo $ "closed liquidity pool: " ++ show lp
+    return ledgerTx
 
 -- | Removes some liquidity from a liquidity pool in exchange for liquidity tokens.
-remove :: HasBlockchainActions s => Uniswap -> RemoveParams -> Contract w s Text ()
+remove :: HasBlockchainActions s => Uniswap -> RemoveParams -> Contract w s Text Tx
 remove us RemoveParams{..} = do
     (_, (oref, o, lp, liquidity)) <- findUniswapFactoryAndPool us rpCoinA rpCoinB
     pkh                           <- pubKeyHash <$> ownPubKey
@@ -289,9 +291,10 @@ remove us RemoveParams{..} = do
     void $ awaitTxConfirmed $ txId ledgerTx
 
     logInfo $ "removed liquidity from pool: " ++ show lp
+    return ledgerTx
 
 -- | Adds some liquidity to an existing liquidity pool in exchange for newly minted liquidity tokens.
-add :: HasBlockchainActions s => Uniswap -> AddParams -> Contract w s Text ()
+add :: HasBlockchainActions s => Uniswap -> AddParams -> Contract w s Text Tx
 add us AddParams{..} = do
     pkh                           <- pubKeyHash <$> ownPubKey
     (_, (oref, o, lp, liquidity)) <- findUniswapFactoryAndPool us apCoinA apCoinB
@@ -334,15 +337,17 @@ add us AddParams{..} = do
     void $ awaitTxConfirmed $ txId ledgerTx
 
     logInfo $ "added liquidity to pool: " ++ show lp
+    return ledgerTx
 
 -- | Uses a liquidity pool two swap one sort of coins in the pool against the other.
-swap :: HasBlockchainActions s => Uniswap -> SwapParams -> Contract w s Text ()
+swap :: HasBlockchainActions s => Uniswap -> SwapParams -> Contract w s Text Tx
 swap us SwapParams{..} = do
+    -- ensure that at only one value is greater than 0
     unless (spAmountA > 0 && spAmountB == 0 || spAmountA == 0 && spAmountB > 0) $ throwError "exactly one amount must be positive"
     (_, (oref, o, lp, liquidity)) <- findUniswapFactoryAndPool us spCoinA spCoinB
     let outVal = txOutValue $ txOutTxOut o
-    let oldA = amountOf outVal spCoinA
-        oldB = amountOf outVal spCoinB
+    let oldA = amountOf outVal spCoinA -- get the total amount of spCoinA in liquidity pool
+        oldB = amountOf outVal spCoinB -- get the total amount of spCoinB in liquidity pool
     (newA, newB) <- if spAmountA > 0 then do
         let outB = Amount $ findSwapA oldA oldB spAmountA
         when (outB == 0) $ throwError "no payout"
@@ -358,6 +363,7 @@ swap us SwapParams{..} = do
     let inst    = uniswapInstance us
         val     = valueOf spCoinA newA <> valueOf spCoinB newB <> unitValue (poolStateCoin us)
 
+        -- TODO: Which one of these transaction constraints are responsible for dispersing dividends?
         lookups = Constraints.scriptInstanceLookups inst                 <>
                   Constraints.otherScript (Scripts.validatorScript inst) <>
                   Constraints.unspentOutputs (Map.singleton oref o)      <>
@@ -367,10 +373,12 @@ swap us SwapParams{..} = do
                   Constraints.mustPayToTheScript (Pool lp liquidity) val
 
     logInfo $ show tx
-    ledgerTx <- submitTxConstraintsWith lookups tx
+    -- TODO: collect information from the feeTx of the Tx in order to guess what the transaction fee would be in the future
+    ledgerTx :: Tx <- submitTxConstraintsWith lookups tx
     logInfo $ show ledgerTx
     void $ awaitTxConfirmed $ txId ledgerTx
     logInfo $ "swapped with: " ++ show lp
+    return ledgerTx
 
 -- | Finds all liquidity pools and their liquidity belonging to the Uniswap instance.
 -- This merely inspects the blockchain and does not issue any transactions.
@@ -467,17 +475,24 @@ findUniswapFactoryAndPool us coinA coinB = do
                    )
         _    -> throwError "liquidity pool not found"
 
-findSwapA :: Amount A -> Amount B -> Amount A -> Integer
+findSwapA
+  :: Amount A  -- original total of first coin in liquidity
+  -> Amount B  -- original total of second coin in liquidity
+  -> Amount A  -- amount of first coin being swapped for second coin
+  -> Integer   -- amount of second coin recieved
 findSwapA oldA oldB inA
     | ub' <= 1   = 0
     | otherwise  = go 1 ub'
   where
+    -- check if swap is valid and fee is computed correctly
     cs :: Integer -> Bool
     cs outB = checkSwap oldA oldB (oldA + inA) (oldB - Amount outB)
 
+    -- find the first integer where checkswap would be invalid
     ub' :: Integer
     ub' = head $ dropWhile cs [2 ^ i | i <- [0 :: Int ..]]
 
+    -- determine amount to swap for
     go :: Integer -> Integer -> Integer
     go lb ub
         | ub == (lb + 1) = lb
@@ -513,12 +528,12 @@ userEndpoints :: Uniswap -> Contract (Last (Either Text UserContractState)) Unis
 userEndpoints us =
     stop
         `select`
-    ((f (Proxy @"create") (const Created) create                 `select`
-      f (Proxy @"swap")   (const Swapped) swap                   `select`
-      f (Proxy @"close")  (const Closed)  close                  `select`
-      f (Proxy @"remove") (const Removed) remove                 `select`
-      f (Proxy @"add")    (const Added)   add                    `select`
-      f (Proxy @"pools")  Pools           (\us' () -> pools us') `select`
+    ((f (Proxy @"create") (const Created) create                         `select`
+      f (Proxy @"swap")   Swapped         swap                           `select`
+      f (Proxy @"close")  Closed          close                          `select`
+      f (Proxy @"remove") Removed         remove                         `select`
+      f (Proxy @"add")    Added           add                            `select`
+      f (Proxy @"pools")  Pools           (\us' () -> pools us')         `select`
       f (Proxy @"funds")  Funds           (\_us () -> funds))    >> userEndpoints us)
   where
     f :: forall l a p.
