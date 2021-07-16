@@ -15,7 +15,7 @@ module Main
     ( main
     ) where
 
-import           Control.Monad                           (forM, void)
+import           Control.Monad                           (forM, forM_, void, when)
 import           Control.Monad.Freer                     (Eff, Member, interpret, type (~>))
 import           Control.Monad.Freer.Error               (Error)
 import           Control.Monad.Freer.Extras.Log          (LogMsg)
@@ -27,8 +27,11 @@ import qualified Data.Semigroup                          as Semigroup
 import           Data.Text                               (Text)
 import           Data.Text.Prettyprint.Doc               (Pretty (..), viaShow)
 import           GHC.Generics                            (Generic)
+import           Ledger
 import           Ledger.Ada                              (adaSymbol, adaToken)
-import           Plutus.Contract
+import           Ledger.Constraints
+import qualified Ledger.Value                            as Value
+import           Plutus.Contract                         hiding (when)
 import qualified Plutus.Contracts.Currency               as Currency
 import qualified Plutus.Contracts.Uniswap                as Uniswap
 import           Plutus.PAB.Effects.Contract             (ContractEffect (..))
@@ -41,7 +44,7 @@ import qualified Plutus.PAB.Simulator                    as Simulator
 import           Plutus.PAB.Types                        (PABError (..))
 import qualified Plutus.PAB.Webserver.Server             as PAB.Server
 import           Prelude                                 hiding (init)
-import           Wallet.Emulator.Types                   (Wallet (..))
+import           Wallet.Emulator.Types                   (Wallet (..), walletPubKey)
 import           Wallet.Types ()
 
 main :: IO ()
@@ -61,7 +64,8 @@ main = mdo
     logString @(Builtin UniswapContracts) $ "Initialization finished. Minted: " ++ show cs
 
     -- TODO: Change tokenNames to be minted (AlphaCoin, BetaCoin, etc...)
-    let coins = Map.fromList [(tn, Uniswap.mkCoin cs tn) | tn <- tokenNames]
+    let pokeDexTokens = ["PikaCoin", "BulbaCoin", "CharmaCoin", "DiggleCoin"]
+        coins = Map.fromList [(tn, Uniswap.mkCoin cs tn) | tn <- pokeDexTokens]
         ada   = Uniswap.mkCoin adaSymbol adaToken
 
     -- IHS Notes: Creates a Smart Contract that will contain swappable tokens
@@ -83,8 +87,8 @@ main = mdo
         return (w, cid)
 
     -- IHS Notes: Creates a new liquidity pool for ADA and "A" Coin | 100k for ADA and 500k for "A" Coin
-    let cp = Uniswap.CreateParams ada (coins Map.! "A") 100000 500000
-        cp2 = Uniswap.CreateParams ada (coins Map.! "B") 100000 500000
+    let cp = Uniswap.CreateParams ada (coins Map.! "PikaCoin") 100000 500000
+        cp2 = Uniswap.CreateParams ada (coins Map.! "BulbaCoin") 100000 500000
     logString @(Builtin UniswapContracts) $ "creating liquidity pool: " ++ show (encode cp)
     -- IHS Notes: How to send request to smart contract instances with API call and values, only return Maybe Error
     let cid2 = cids Map.! Wallet 2
@@ -155,7 +159,7 @@ handleUniswapContract = Builtin.handleBuiltin getSchema getContract where
   getContract = \case
     UniswapUser us -> SomeBuiltin $ Uniswap.userEndpoints us
     UniswapStart   -> SomeBuiltin Uniswap.ownerEndpoint
-    Init           -> SomeBuiltin US.initContract
+    Init           -> SomeBuiltin initContract'
 
 handlers
   :: Maybe Uniswap.Uniswap
@@ -166,3 +170,19 @@ handlers mUs = do
         $ interpret handleUniswapContract
       Just us -> Simulator.mkSimulatorHandlers @(Builtin UniswapContracts) [Init, UniswapStart, UniswapUser us]
         $ interpret handleUniswapContract
+
+initContract' :: Contract (Maybe (Semigroup.Last Currency.OneShotCurrency)) Currency.CurrencySchema Currency.CurrencyError ()
+initContract' = do
+    let pokeDexTokens = ["PikaCoin", "BulbaCoin", "CharmaCoin", "DiggleCoin"]
+    ownPK <- pubKeyHash <$> ownPubKey
+    cur   <- Currency.forgeContract ownPK [(tn, fromIntegral (length wallets') * amount) | tn <- pokeDexTokens]
+    let cs = Currency.currencySymbol cur
+        v  = mconcat [Value.singleton cs tn amount | tn <- pokeDexTokens]
+    forM_ wallets' $ \w -> do
+        let pkh = pubKeyHash $ walletPubKey w
+        when (pkh /= ownPK) $ do
+            tx <- submitTx $ mustPayToPubKey pkh v
+            awaitTxConfirmed $ txId tx
+    tell $ Just $ Semigroup.Last cur
+  where
+    amount = 1000000
