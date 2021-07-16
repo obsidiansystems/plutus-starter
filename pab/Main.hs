@@ -175,10 +175,10 @@ initContract' :: Contract (Maybe (Semigroup.Last Currency.OneShotCurrency)) Curr
 initContract' = do
     let pokeDexTokens = ["PikaCoin", "BulbaCoin", "CharmaCoin", "DiggleCoin"]
     ownPK <- pubKeyHash <$> ownPubKey
-    cur   <- Currency.forgeContract ownPK [(tn, fromIntegral (length wallets') * amount) | tn <- pokeDexTokens]
+    cur   <- Currency.forgeContract ownPK [(tn, fromIntegral (length wallets) * amount) | tn <- pokeDexTokens]
     let cs = Currency.currencySymbol cur
         v  = mconcat [Value.singleton cs tn amount | tn <- pokeDexTokens]
-    forM_ wallets' $ \w -> do
+    forM_ wallets $ \w -> do
         let pkh = pubKeyHash $ walletPubKey w
         when (pkh /= ownPK) $ do
             tx <- submitTx $ mustPayToPubKey pkh v
