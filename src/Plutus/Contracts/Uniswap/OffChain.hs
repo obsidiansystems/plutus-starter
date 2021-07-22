@@ -32,6 +32,7 @@ import           Control.Monad                    hiding (fmap)
 import qualified Data.Map                         as Map
 import           Data.Monoid                      (Last (..))
 import           Data.Proxy                       (Proxy (..))
+import qualified Data.Set                         as Set
 import           Data.Text                        (Text, pack)
 import           Data.Void                        (Void)
 import           Ledger                           hiding (singleton)
@@ -74,10 +75,10 @@ data UserContractState =
       Pools [((Coin A, Amount A), (Coin B, Amount B), (TokenName, Amount Liquidity))]
     | Funds Value
     | Created
-    | Swapped Tx -- TODO: This Tx may be more information than needed to send over websocket for tx estimation feature, consider consolidating
-    | Added Tx   -- TODO: This Tx may be more information than needed to send over websocket for tx estimation feature, consider consolidating
-    | Removed Tx -- TODO: This Tx may be more information than needed to send over websocket for tx estimation feature, consider consolidating
-    | Closed Tx  -- TODO: This Tx may be more information than needed to send over websocket for tx estimation feature, consider consolidating
+    | Swapped (Tx, Integer)
+    | Added Tx
+    | Removed Tx
+    | Closed Tx
     | Stopped
     deriving (Show, Generic, FromJSON, ToJSON)
 
@@ -340,7 +341,7 @@ add us AddParams{..} = do
     return ledgerTx
 
 -- | Uses a liquidity pool two swap one sort of coins in the pool against the other.
-swap :: HasBlockchainActions s => Uniswap -> SwapParams -> Contract w s Text Tx
+swap :: HasBlockchainActions s => Uniswap -> SwapParams -> Contract w s Text (Tx, Integer) -- (Tx, ScriptSize)
 swap us SwapParams{..} = do
     -- ensure that at only one value is greater than 0
     unless (spAmountA > 0 && spAmountB == 0 || spAmountA == 0 && spAmountB > 0) $ throwError "exactly one amount must be positive"
@@ -363,7 +364,6 @@ swap us SwapParams{..} = do
     let inst    = uniswapInstance us
         val     = valueOf spCoinA newA <> valueOf spCoinB newB <> unitValue (poolStateCoin us)
 
-        -- TODO: Which one of these transaction constraints are responsible for dispersing dividends?
         lookups = Constraints.scriptInstanceLookups inst                 <>
                   Constraints.otherScript (Scripts.validatorScript inst) <>
                   Constraints.unspentOutputs (Map.singleton oref o)      <>
@@ -373,12 +373,18 @@ swap us SwapParams{..} = do
                   Constraints.mustPayToTheScript (Pool lp liquidity) val
 
     logInfo $ show tx
-    -- TODO: collect information from the feeTx of the Tx in order to guess what the transaction fee would be in the future
     ledgerTx :: Tx <- submitTxConstraintsWith lookups tx
     logInfo $ show ledgerTx
     void $ awaitTxConfirmed $ txId ledgerTx
     logInfo $ "swapped with: " ++ show lp
-    return ledgerTx
+    let txIns :: [TxInType] = map txInType $ Set.toList $ txInputs ledgerTx
+        txInScriptSize :: TxInType -> Integer
+        txInScriptSize txInType  = case txInType of
+          ConsumeScriptAddress vlidator _ _ -> scriptSize $ unValidatorScript vlidator
+          ConsumePublicKeyAddress -> 0
+        scrSize = sum $ map txInScriptSize txIns
+    -- return Tx and script size
+    return (ledgerTx, scrSize)
 
 -- | Finds all liquidity pools and their liquidity belonging to the Uniswap instance.
 -- This merely inspects the blockchain and does not issue any transactions.

@@ -53,7 +53,6 @@ main = mdo
     logString @(Builtin UniswapContracts) "Starting Uniswap PAB webserver on port 8080. Press enter to exit."
     shutdown <- PAB.Server.startServerDebug
 
-    -- TODO: How many wallets do we want to make?
     -- IHS Notes: creates 1 million token for the smart contract exchange
     cidInit  :: ContractInstanceId <- Simulator.activateContract (Wallet 1) Init
     cs       <- flip Simulator.waitForState cidInit $ \json -> case fromJSON json of
@@ -63,7 +62,6 @@ main = mdo
 
     logString @(Builtin UniswapContracts) $ "Initialization finished. Minted: " ++ show cs
 
-    -- TODO: Change tokenNames to be minted (AlphaCoin, BetaCoin, etc...)
     let pokeDexTokens = ["PikaCoin", "BulbaCoin", "CharmaCoin", "DiggleCoin"]
         coins = Map.fromList [(tn, Uniswap.mkCoin cs tn) | tn <- pokeDexTokens]
         ada   = Uniswap.mkCoin adaSymbol adaToken
@@ -124,7 +122,6 @@ main = mdo
     Simulator.logBalances @(Builtin UniswapContracts) bal
 
     return (shutdown, Just us)
-  -- Note: once the runSimulation with has ended... it starts from Slot 0 again... soooo... yea... TODO: this didn't accomplish anything
   case uniswapServerHandle of
     Left _ -> return ()
     Right (shutdown', Nothing) -> void $ Simulator.runSimulationWith (handlers Nothing) $ do
