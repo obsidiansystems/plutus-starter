@@ -6,6 +6,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE MultiParamTypeClasses      #-}
+{-# LANGUAGE NamedFieldPuns             #-}
 {-# LANGUAGE NoImplicitPrelude          #-}
 {-# LANGUAGE OverloadedStrings          #-}
 {-# LANGUAGE RecordWildCards            #-}
@@ -28,6 +29,7 @@ module Plutus.Contracts.Uniswap.OffChain
     , ownerEndpoint, userEndpoints
     ) where
 
+import           Control.Lens                     (view)
 import           Control.Monad                    hiding (fmap)
 import qualified Data.Map                         as Map
 import           Data.Maybe                       (catMaybes)
@@ -35,20 +37,19 @@ import           Data.Monoid                      (Last (..))
 import           Data.Proxy                       (Proxy (..))
 import qualified Data.Set                         as Set
 import           Data.Text                        (Text, pack)
-import           Data.Void                        (Void)
+import           Data.Void                        (Void, absurd)
 import           Ledger                           hiding (singleton)
-import           Ledger.Tx
 import           Ledger.Constraints               as Constraints
 import qualified Ledger.Typed.Scripts             as Scripts
 import           Playground.Contract
-import           Plutus.Contract                  hiding (when)
+import           Plutus.Contract
 import qualified Plutus.Contracts.Currency        as Currency
 import           Plutus.Contracts.Uniswap.OnChain (mkUniswapValidator, validateLiquidityMinting)
 import           Plutus.Contracts.Uniswap.Pool
 import           Plutus.Contracts.Uniswap.Types
 import qualified PlutusTx
 import           PlutusTx.Prelude                 hiding (Semigroup (..), dropWhile, flip, unless)
-import           Prelude                          as Haskell (Semigroup (..), dropWhile, flip, String, Int, show)
+import           Prelude                          as Haskell (Semigroup (..), dropWhile, flip, String, Int, show, (^), div)
 import           Text.Printf                      (printf)
 
 data Uniswapping
@@ -59,7 +60,7 @@ instance Scripts.ValidatorTypes Uniswapping where
 type UniswapOwnerSchema = Endpoint "start" ()
 
 -- | Schema for the endpoints for users of Uniswap.
-type UniswapUserSchema = 
+type UniswapUserSchema =
         Endpoint "create" CreateParams
         .\/ Endpoint "swap"   SwapParams
         .\/ Endpoint "close"  CloseParams
@@ -270,7 +271,7 @@ remove us RemoveParams{..} = do
         lC           = mkCoin (liquidityCurrency us) $ lpTicker lp
         psVal        = unitValue psC
         lVal         = valueOf lC rpDiff
-        inVal        = txOutValue $ txOutTxOut o
+        inVal        = view ciTxOutValue o
         inA          = amountOf inVal rpCoinA
         inB          = amountOf inVal rpCoinB
         (outA, outB) = calculateRemoval inA inB liquidity rpDiff
@@ -299,7 +300,7 @@ add us AddParams{..} = do
     pkh                           <- pubKeyHash <$> ownPubKey
     (_, (oref, o, lp, liquidity)) <- findUniswapFactoryAndPool us apCoinA apCoinB
     when (apAmountA < 0 || apAmountB < 0) $ throwError "amounts must not be negative"
-    let outVal = txOutValue $ txOutTxOut o
+    let outVal = view ciTxOutValue o
         oldA   = amountOf outVal apCoinA
         oldB   = amountOf outVal apCoinB
         newA   = oldA + apAmountA
@@ -345,7 +346,7 @@ swap us SwapParams{..} = do
     -- ensure that at only one value is greater than 0
     unless (spAmountA > 0 && spAmountB == 0 || spAmountA == 0 && spAmountB > 0) $ throwError "exactly one amount must be positive"
     (_, (oref, o, lp, liquidity)) <- findUniswapFactoryAndPool us spCoinA spCoinB
-    let outVal = txOutValue $ txOutTxOut o
+    let outVal = view ciTxOutValue o
     let oldA = amountOf outVal spCoinA -- get the total amount of spCoinA in liquidity pool
         oldB = amountOf outVal spCoinB -- get the total amount of spCoinB in liquidity pool
     (newA, newB) <- if spAmountA > 0 then do
@@ -389,13 +390,13 @@ swap us SwapParams{..} = do
 -- This merely inspects the blockchain and does not issue any transactions.
 pools :: forall w s. Uniswap -> Contract w s Text [((Coin A, Amount A), (Coin B, Amount B), (TokenName, Amount Liquidity))]
 pools us = do
-    utxos <- utxoAt (uniswapAddress us)
+    utxos <- utxosAt (uniswapAddress us)
     go $ snd <$> Map.toList utxos
   where
-    go :: [TxOutTx] -> Contract w s Text [((Coin A, Amount A), (Coin B, Amount B), (TokenName, Amount Liquidity))]
+    go :: [ChainIndexTxOut] -> Contract w s Text [((Coin A, Amount A), (Coin B, Amount B), (TokenName, Amount Liquidity))]
     go []       = return []
     go (o : os) = do
-        let v = txOutValue $ txOutTxOut o
+        let v = view ciTxOutValue o
         if isUnity v c
             then do
                 d <- getUniswapDatum o
@@ -420,41 +421,41 @@ pools us = do
 funds :: Contract w s Text Value
 funds = do
     pkh <- pubKeyHash <$> ownPubKey
-    os <- Map.toList <$> utxoAt (pubKeyHashAddress pkh)
+    os <- Map.toList <$> utxosAt (pubKeyHashAddress pkh)
     let os' = map snd os
-    return $ mconcat [txOutValue $ txOutTxOut o | o <- os']
-
-getUniswapDatum :: TxOutTx -> Contract w s Text UniswapDatum
-getUniswapDatum o = case txOutDatumHash $ txOutTxOut o of
-        Nothing -> throwError "datumHash not found"
-        Just h -> case Map.lookup h $ txData $ txOutTxTx o of
-            Nothing -> throwError "datum not found"
-            Just (Datum e) -> case PlutusTx.fromData e of
-                Nothing -> throwError "datum has wrong type"
-                Just d  -> return d
+    return $ mconcat [view ciTxOutValue o | o <- os']
 
 -- getUniswapDatum :: ChainIndexTxOut -> Contract w s Text UniswapDatum
--- getUniswapDatum o =
---   case o of
---       PublicKeyChainIndexTxOut {} ->
---         throwError "no datum for a txout of a public key address"
---       ScriptChainIndexTxOut { _ciTxOutDatum } -> do
---         (Datum e) <- either getDatum pure _ciTxOutDatum
---         maybe (throwError "datum hash wrong type")
---               pure
---               (PlutusTx.fromBuiltinData e)
---   where
---     getDatum :: DatumHash -> Contract w s Text Datum
---     getDatum dh =
---       datumFromHash dh >>= \case Nothing -> throwError "datum not found"
---                                  Just d  -> pure d
+-- getUniswapDatum o = case txOutDatumHash $ txOutTxOut o of
+--         Nothing -> throwError "datumHash not found"
+--         Just h -> case Map.lookup h $ txData $ txOutTxTx o of
+--             Nothing -> throwError "datum not found"
+--             Just (Datum e) -> case PlutusTx.fromData e of
+--                 Nothing -> throwError "datum has wrong type"
+--                 Just d  -> return d
 
-findUniswapInstance :: Uniswap -> Coin b -> (UniswapDatum -> Maybe a) -> Contract w s Text (TxOutRef, TxOutTx, a)
+getUniswapDatum :: ChainIndexTxOut -> Contract w s Text UniswapDatum
+getUniswapDatum o =
+  case o of
+      PublicKeyChainIndexTxOut {} ->
+        throwError "no datum for a txout of a public key address"
+      ScriptChainIndexTxOut { _ciTxOutDatum } -> do
+        (Datum e) <- either getDatum pure _ciTxOutDatum
+        maybe (throwError "datum hash wrong type")
+              pure
+              (PlutusTx.fromBuiltinData e)
+  where
+    getDatum :: DatumHash -> Contract w s Text Datum
+    getDatum dh =
+      datumFromHash dh >>= \case Nothing -> throwError "datum not found"
+                                 Just d  -> pure d
+
+findUniswapInstance :: Uniswap -> Coin b -> (UniswapDatum -> Maybe a) -> Contract w s Text (TxOutRef, ChainIndexTxOut, a)
 findUniswapInstance us c f = do
     let addr = uniswapAddress us
     logInfo @String $ printf "looking for Uniswap instance at address %s containing coin %s " (show addr) (show c)
-    utxos <- utxoAt addr
-    go  [x | x@(_, o) <- Map.toList utxos, isUnity (txOutValue $ txOutTxOut o) c]
+    utxos <- utxosAt addr
+    go  [x | x@(_, o) <- Map.toList utxos, isUnity (view ciTxOutValue o) c]
   where
     go [] = throwError "Uniswap instance not found"
     go ((oref, o) : xs) = do
@@ -465,12 +466,12 @@ findUniswapInstance us c f = do
                 logInfo @String $ printf "found Uniswap instance with datum: %s" (show d)
                 return (oref, o, a)
 
-findUniswapFactory :: Uniswap -> Contract w s Text (TxOutRef, TxOutTx, [LiquidityPool])
+findUniswapFactory :: Uniswap -> Contract w s Text (TxOutRef, ChainIndexTxOut, [LiquidityPool])
 findUniswapFactory us@Uniswap{..} = findUniswapInstance us usCoin $ \case
     Factory lps -> Just lps
     Pool _ _    -> Nothing
 
-findUniswapPool :: Uniswap -> LiquidityPool -> Contract w s Text (TxOutRef, TxOutTx, Amount Liquidity)
+findUniswapPool :: Uniswap -> LiquidityPool -> Contract w s Text (TxOutRef, ChainIndexTxOut, Amount Liquidity)
 findUniswapPool us lp = findUniswapInstance us (poolStateCoin us) $ \case
         Pool lp' l
             | lp == lp' -> Just l
@@ -479,8 +480,8 @@ findUniswapPool us lp = findUniswapInstance us (poolStateCoin us) $ \case
 findUniswapFactoryAndPool :: Uniswap
                           -> Coin A
                           -> Coin B
-                          -> Contract w s Text ( (TxOutRef, TxOutTx, [LiquidityPool])
-                                               , (TxOutRef, TxOutTx, LiquidityPool, Amount Liquidity)
+                          -> Contract w s Text ( (TxOutRef, ChainIndexTxOut, [LiquidityPool])
+                                               , (TxOutRef, ChainIndexTxOut, LiquidityPool, Amount Liquidity)
                                                )
 findUniswapFactoryAndPool us coinA coinB = do
     (oref1, o1, lps) <- findUniswapFactory us
@@ -543,38 +544,34 @@ ownerEndpoint = do
 --      [@pools@]: Finds all liquidity pools and their liquidity belonging to the Uniswap instance. This merely inspects the blockchain and does not issue any transactions.
 --      [@funds@]: Gets the caller's funds. This merely inspects the blockchain and does not issue any transactions.
 --      [@stop@]: Stops the contract.
-userEndpoints :: Uniswap -> Contract (Last (Either Text UserContractState)) UniswapUserSchema Void ()
+userEndpoints :: Uniswap -> Promise (Last (Either Text UserContractState)) UniswapUserSchema Void ()
 userEndpoints us =
     stop
         `select`
-    ((f (Proxy @"create") (const Created) create                         `select`
-      f (Proxy @"swap")   Swapped         swap                           `select`
-      f (Proxy @"close")  Closed          close                          `select`
-      f (Proxy @"remove") Removed         remove                         `select`
-      f (Proxy @"add")    Added           add                            `select`
-      f (Proxy @"pools")  Pools           (\us' () -> pools us')         `select`
-      f (Proxy @"funds")  Funds           (\_us () -> funds))    >> userEndpoints us)
+    (void (f (Proxy @"create") (const Created) create                         `select`
+           f (Proxy @"swap")   Swapped         swap                           `select`
+           f (Proxy @"close")  Closed          close                          `select`
+           f (Proxy @"remove") Removed         remove                         `select`
+           f (Proxy @"add")    Added           add                            `select`
+           f (Proxy @"pools")  Pools                   (\us' () -> pools us')         `select`
+           f (Proxy @"funds")  Funds                   (\_us () -> funds))
+     <> userEndpoints us)
   where
     f :: forall l a p.
-         (HasEndpoint l p UniswapUserSchema, Show a)
+         (HasEndpoint l p UniswapUserSchema, FromJSON p)
       => Proxy l
       -> (a -> UserContractState)
       -> (Uniswap -> p -> Contract (Last (Either Text UserContractState)) UniswapUserSchema Text a)
-      -> Contract (Last (Either Text UserContractState)) UniswapUserSchema Void ()
-    f _ g c = do
-        e <- runError $ do
-            p <- endpoint @l
-            c us p
-        -- Added to make user endpoint errors louder during simulation
-        logInfo @String $ printf "userEndpoints Error e: %s" (show e)
-        tell $ Last $ Just $ case e of
-            Left err -> Left err
-            Right a  -> Right $ g a
+      -> Promise (Last (Either Text UserContractState)) UniswapUserSchema Void ()
+    f _ g c = handleEndpoint @l $ \p -> do
+      e <- either (pure . Left) (runError . c us) p
+      tell $ Last $ Just $ case e of
+        Left err -> Left err
+        Right a  -> Right $ g a
 
-    stop :: Contract (Last (Either Text UserContractState)) UniswapUserSchema Void ()
-    stop = do
-        e <- runError $ endpoint @"stop"
-        tell $ Last $ Just $ case e of
-            Left err -> Left err
-            Right () -> Right Stopped
+    stop :: Promise (Last (Either Text UserContractState)) UniswapUserSchema Void ()
+    stop = handleEndpoint @"stop" $ \e -> do
+      tell $ Last $ Just $ case e of
+        Left err -> Left err
+        Right () -> Right Stopped
 

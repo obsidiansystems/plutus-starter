@@ -52,6 +52,7 @@ library
       bytestring,
       containers,
       freer-extras,
+      lens,
       playground-common,
       plutus-contract,
       plutus-tx-plugin,
