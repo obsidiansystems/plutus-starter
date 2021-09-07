@@ -40,6 +40,8 @@ common lang
 
 library
     import: lang
+    reexported-modules:
+      Plutus.Contracts.Currency
     exposed-modules:
       Plutus.Contracts.Uniswap
       Plutus.Contracts.Uniswap.OnChain

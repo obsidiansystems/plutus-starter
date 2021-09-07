@@ -21,6 +21,7 @@ import           Control.Monad.Freer.Error               (Error)
 import           Control.Monad.Freer.Extras.Log          (LogMsg)
 import           Control.Monad.IO.Class                  (MonadIO (..))
 import           Data.Aeson                              (FromJSON, Result (..), ToJSON, encode, fromJSON)
+import           Data.Default
 import qualified Data.Map.Strict                         as Map
 import qualified Data.Monoid                             as Monoid
 import qualified Data.Semigroup                          as Semigroup
@@ -37,7 +38,6 @@ import qualified Plutus.Contracts.Uniswap                as Uniswap
 import           Plutus.PAB.Effects.Contract             (ContractEffect (..))
 import           Plutus.PAB.Effects.Contract.Builtin     (Builtin, SomeBuiltin (..), type (.\\))
 import qualified Plutus.PAB.Effects.Contract.Builtin     as Builtin
-import           Plutus.PAB.Effects.ContractTest.Uniswap as US
 import           Plutus.PAB.Monitoring.PABLogMsg         (PABMultiAgentMsg)
 import           Plutus.PAB.Simulator                    (SimulatorEffectHandlers, logString)
 import qualified Plutus.PAB.Simulator                    as Simulator
@@ -49,8 +49,8 @@ import           Wallet.Types ()
 
 main :: IO ()
 main = mdo
-  uniswapServerHandle <- Simulator.runSimulationWith (handlers Nothing) $ do
-    logString @(Builtin UniswapContracts) "Starting Uniswap PAB webserver on port 8080. Press enter to exit."
+  uniswapServerHandle <- Simulator.runSimulationWith handlers $ do
+    logString @(Builtin UniswapContracts) "Starting Uniswap PAB webserver on port 9080. Press enter to exit."
     shutdown <- PAB.Server.startServerDebug
 
     -- IHS Notes: creates 1 million token for the smart contract exchange
@@ -111,9 +111,9 @@ main = mdo
     Simulator.logBalances @(Builtin UniswapContracts) bal1
 
     -- IHS Notes: Mock chain is now in a listening state.
-    -- Calls made to http://localhost:8080/api/new/contract/instance/5e9de181-d3a2-4116-b957-33f59b13c7c8/endpoint/funds
+    -- Calls made to http://localhost:9080/api/contract/instance/5e9de181-d3a2-4116-b957-33f59b13c7c8/endpoint/funds
     -- or any other action, .../endpoint/{action}, will have to be followed with a call to
-    -- http://localhost:8080/api/new/contract/instance/{ContractInstanceId}/status in order to get the
+    -- http://localhost:9080/api/contract/instance/{ContractInstanceId}/status in order to get the
     -- response from the `observableState` field
     _ <- liftIO getLine
 
@@ -124,10 +124,10 @@ main = mdo
     return (shutdown, Just us)
   case uniswapServerHandle of
     Left _ -> return ()
-    Right (shutdown', Nothing) -> void $ Simulator.runSimulationWith (handlers Nothing) $ do
+    Right (shutdown', Nothing) -> void $ Simulator.runSimulationWith handlers $ do
       logString @(Builtin UniswapContracts) "Hit Right(_, Nothing) case"
       shutdown'
-    Right (shutdown', mUs) -> void $ Simulator.runSimulationWith (handlers mUs) $ do
+    Right (shutdown', mUs) -> void $ Simulator.runSimulationWith handlers $ do
       logString @(Builtin UniswapContracts) "Hit Right(_, Just ...) case"
       _ <- liftIO getLine
       shutdown'
@@ -142,37 +142,30 @@ data UniswapContracts =
 instance Pretty UniswapContracts where
     pretty = viaShow
 
-handleUniswapContract ::
-    ( Member (Error PABError) effs
-    , Member (LogMsg (PABMultiAgentMsg (Builtin UniswapContracts))) effs
-    )
-    => ContractEffect (Builtin UniswapContracts)
-    ~> Eff effs
-handleUniswapContract = Builtin.handleBuiltin getSchema getContract where
-  getSchema = \case
-    UniswapUser _ -> Builtin.endpointsToSchemas @(Uniswap.UniswapUserSchema .\\ BlockchainActions)
-    UniswapStart  -> Builtin.endpointsToSchemas @(Uniswap.UniswapOwnerSchema .\\ BlockchainActions)
-    Init          -> Builtin.endpointsToSchemas @Empty
-  getContract = \case
-    UniswapUser us -> SomeBuiltin $ Uniswap.userEndpoints us
-    UniswapStart   -> SomeBuiltin Uniswap.ownerEndpoint
-    Init           -> SomeBuiltin initContract'
+instance Builtin.HasDefinitions UniswapContracts where
+    getDefinitions = [Init, UniswapStart]
+    getSchema = \case
+        UniswapUser _ -> Builtin.endpointsToSchemas @Uniswap.UniswapUserSchema
+        UniswapStart  -> Builtin.endpointsToSchemas @Uniswap.UniswapOwnerSchema
+        Init          -> Builtin.endpointsToSchemas @Empty
+    getContract = \case
+        UniswapUser us -> SomeBuiltin . awaitPromise $ Uniswap.userEndpoints us
+        UniswapStart   -> SomeBuiltin Uniswap.ownerEndpoint
+        Init           -> SomeBuiltin initContract'
 
-handlers
-  :: Maybe Uniswap.Uniswap
-  -> SimulatorEffectHandlers (Builtin UniswapContracts)
-handlers mUs = do
-    case mUs of
-      Nothing-> Simulator.mkSimulatorHandlers @(Builtin UniswapContracts) [Init, UniswapStart]
-        $ interpret handleUniswapContract
-      Just us -> Simulator.mkSimulatorHandlers @(Builtin UniswapContracts) [Init, UniswapStart, UniswapUser us]
-        $ interpret handleUniswapContract
+handlers :: SimulatorEffectHandlers (Builtin UniswapContracts)
+handlers =
+    Simulator.mkSimulatorHandlers def def
+    $ interpret (Builtin.contractHandler (Builtin.handleBuiltin @UniswapContracts))
+
+wallets :: [Wallet]
+wallets = [Wallet i | i <- [1 .. 4]]
 
 initContract' :: Contract (Maybe (Semigroup.Last Currency.OneShotCurrency)) Currency.CurrencySchema Currency.CurrencyError ()
 initContract' = do
     let pokeDexTokens = ["PikaCoin", "BulbaCoin", "CharmaCoin", "DiggleCoin"]
     ownPK <- pubKeyHash <$> ownPubKey
-    cur   <- Currency.forgeContract ownPK [(tn, fromIntegral (length wallets) * amount) | tn <- pokeDexTokens]
+    cur   <- Currency.mintContract ownPK [(tn, fromIntegral (length wallets) * amount) | tn <- pokeDexTokens]
     let cs = Currency.currencySymbol cur
         v  = mconcat [Value.singleton cs tn amount | tn <- pokeDexTokens]
     forM_ wallets $ \w -> do
