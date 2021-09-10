@@ -44,7 +44,7 @@ import qualified Plutus.PAB.Simulator                    as Simulator
 import           Plutus.PAB.Types                        (PABError (..))
 import qualified Plutus.PAB.Webserver.Server             as PAB.Server
 import           Prelude                                 hiding (init)
-import           Wallet.Emulator.Types                   (Wallet (..), walletPubKey)
+import           Wallet.Emulator.Types                   (Wallet (..), walletPubKey, WalletNumber (..), fromWalletNumber, knownWallet)
 import           Wallet.Types ()
 
 main :: IO ()
@@ -54,7 +54,7 @@ main = mdo
     shutdown <- PAB.Server.startServerDebug
 
     -- IHS Notes: creates 1 million token for the smart contract exchange
-    cidInit  :: ContractInstanceId <- Simulator.activateContract (Wallet 1) Init
+    cidInit  :: ContractInstanceId <- Simulator.activateContract (knownWallet 1) Init
     cs       <- flip Simulator.waitForState cidInit $ \json -> case fromJSON json of
                     Success (Just (Semigroup.Last cur)) -> Just $ Currency.currencySymbol cur
                     _                                   -> Nothing
@@ -67,7 +67,7 @@ main = mdo
         ada   = Uniswap.mkCoin adaSymbol adaToken
 
     -- IHS Notes: Creates a Smart Contract that will contain swappable tokens
-    cidStart :: ContractInstanceId <- Simulator.activateContract (Wallet 1) UniswapStart
+    cidStart :: ContractInstanceId <- Simulator.activateContract (knownWallet 1) UniswapStart
     us :: Uniswap.Uniswap <- flip Simulator.waitForState cidStart $ \json -> case (fromJSON json :: Result (Monoid.Last (Either Text Uniswap.Uniswap))) of
                     Success (Monoid.Last (Just (Right us))) -> Just us
                     _                                       -> Nothing
@@ -89,11 +89,11 @@ main = mdo
         cp2 = Uniswap.CreateParams ada (coins Map.! "BulbaCoin") 100000 500000
     logString @(Builtin UniswapContracts) $ "creating liquidity pool: " ++ show (encode cp)
     -- IHS Notes: How to send request to smart contract instances with API call and values, only return Maybe Error
-    let cid2 = cids Map.! Wallet 2
+    let cid2 = cids Map.! (knownWallet 2)
     Simulator.waitForEndpoint cid2 "create"
     _  <- Simulator.callEndpointOnInstance cid2 "create" cp
     -- IHS: use waitForState to wait for the smart contract response
-    flip Simulator.waitForState (cids Map.! Wallet 2) $ \json -> case (fromJSON json :: Result (Monoid.Last (Either Text Uniswap.UserContractState))) of
+    flip Simulator.waitForState (cids Map.! (knownWallet 2)) $ \json -> case (fromJSON json :: Result (Monoid.Last (Either Text Uniswap.UserContractState))) of
         Success (Monoid.Last (Just (Right Uniswap.Created))) -> Just ()
         _                                                    -> Nothing
     logString @(Builtin UniswapContracts) "liquidity pool created"
@@ -101,7 +101,7 @@ main = mdo
     Simulator.waitForEndpoint cid2 "create"
     _  <- Simulator.callEndpointOnInstance cid2 "create" cp2
     -- IHS: use waitForState to wait for the smart contract response
-    flip Simulator.waitForState (cids Map.! Wallet 2) $ \json -> case (fromJSON json :: Result (Monoid.Last (Either Text Uniswap.UserContractState))) of
+    flip Simulator.waitForState (cids Map.! (knownWallet 2)) $ \json -> case (fromJSON json :: Result (Monoid.Last (Either Text Uniswap.UserContractState))) of
         Success (Monoid.Last (Just (Right Uniswap.Created))) -> Just ()
         _                                                    -> Nothing
     logString @(Builtin UniswapContracts) "second liquidity pool created"
@@ -159,7 +159,7 @@ handlers =
     $ interpret (Builtin.contractHandler (Builtin.handleBuiltin @UniswapContracts))
 
 wallets :: [Wallet]
-wallets = [Wallet i | i <- [1 .. 4]]
+wallets = [knownWallet i | i <- [1 .. 4]]
 
 initContract' :: Contract (Maybe (Semigroup.Last Currency.OneShotCurrency)) Currency.CurrencySchema Currency.CurrencyError ()
 initContract' = do
