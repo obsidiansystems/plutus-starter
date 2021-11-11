@@ -40,20 +40,28 @@ common lang
 
 library
     import: lang
+    reexported-modules:
+      Plutus.Contracts.Currency,
+      Plutus.Contracts.Uniswap
     exposed-modules:
-      MyModule
-      Plutus.Contracts.Game
+      Plutus.Contracts.Uniswap.OnChain
+      Plutus.Contracts.Uniswap.OffChain
+      Plutus.Contracts.Uniswap.Pool
+      Plutus.Contracts.Uniswap.Types
     build-depends:
       base >= 4.9 && < 5,
       aeson,
       bytestring,
       containers,
       freer-extras,
+      lens,
       playground-common,
       plutus-contract,
       plutus-tx-plugin,
       plutus-tx,
       plutus-ledger,
+      plutus-use-cases,
+      text
     hs-source-dirs: src examples/src
 
 test-suite plutus-example-projects-test
@@ -84,6 +92,7 @@ executable plutus-starter-pab
   build-depends:
     base >= 4.9 && < 5,
     data-default -any,
+    containers,
     plutus-contract -any,
     plutus-pab -any,
     plutus-starter -any,
@@ -91,6 +100,10 @@ executable plutus-starter-pab
     freer-simple -any,
     prettyprinter -any,
     freer-extras -any,
+    lens,
+    playground-common,
     plutus-ledger -any,
+    plutus-use-cases,
     openapi3 -any,
+    text
 
